@@ -1,0 +1,37 @@
+## Interface: 120007
+## Title: |cff00c7ffVoidScout|r
+## Notes: Utility-aware applicant scoring for LFG premade groups
+## Author: Vede
+## Version: 0.37.3
+## SavedVariables: VoidScoutDB, VoidHubCharDB
+## SavedVariablesPerCharacter: VoidScoutCharDB
+## DefaultState: enabled
+## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
+
+# Embedded VoidLib so users do not need a separate addon download.
+Libs\VoidLib\VoidLib.lua
+Libs\VoidLib\Secrets.lua
+Libs\VoidLib\Logger.lua
+
+# Consent dialog must load BEFORE any module that calls
+# VoidScout_IsUploadAllowed() (FightRecorder, PlayerScan).
+ConsentDialog.lua
+Core.lua
+MechanicConfigs.lua
+VoidScoutCache.lua
+VoidScoutBundle.lua
+TimerData.lua
+TimerScore.lua
+ScoreEngine.lua
+PlayerScan.lua
+LFGPanel.lua
+LabelPicker.lua
+FightRecorder.lua
+LeaderProbabilityOverlay.lua
+PreflightDetector.lua
+TrashDiscovery.lua
+LFGFieldScanner.lua
+
+# Minimap button + shared VoidHub icon cluster.
+Minimap.lua
+VoidHubBundle.lua
