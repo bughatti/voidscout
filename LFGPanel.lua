@@ -310,6 +310,7 @@ end
 -- Build the current player's profile
 ----------------------------------------------------------------------
 local function GetMyProfile()
+    VoidScoutCharDB = VoidScoutCharDB or {}   -- per-character SV is nil until first use (e.g. a fresh alt)
     local name = UnitName("player")
     local realm = GetRealmName()
     local _, classFile = UnitClass("player")

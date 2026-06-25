@@ -2,7 +2,7 @@
 ## Title: |cff00c7ffVoidScout|r
 ## Notes: Utility-aware applicant scoring for LFG premade groups
 ## Author: Vede
-## Version: 0.37.3
+## Version: 0.37.4
 ## SavedVariables: VoidScoutDB, VoidHubCharDB
 ## SavedVariablesPerCharacter: VoidScoutCharDB
 ## DefaultState: enabled

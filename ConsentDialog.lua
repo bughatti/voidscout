@@ -40,14 +40,21 @@
 -- typed-slash-first UX (see feedback-no-typed-slash-commands memory).
 ----------------------------------------------------------------------
 
-local CONSENT_VERSION = 3  -- bump if we add new data categories (v2: gear + achievements explicit; v3: explained the companion-uploader requirement + voidscout.io/install)
+local CONSENT_VERSION = 3  -- version stamped on NEW choices (current dialog text)
+-- Re-prompt ONLY when the stored choice predates a genuinely new DATA CATEGORY --
+-- never on every version change. Exact-version matching was fragile: it re-nagged
+-- whenever the number moved in EITHER direction (a stored v3 against code v2 still
+-- mismatches). Bump REPROMPT_BELOW only when we start collecting new data; v2->v3
+-- was wording (the uploader explanation), so any v2-or-newer choice still stands.
+local REPROMPT_BELOW = 2
 
 VoidScoutDB = VoidScoutDB or {}
 
 local function readConsent()
     local c = VoidScoutDB.consent
     if type(c) ~= "table" then return nil end
-    if c.version ~= CONSENT_VERSION then return nil end  -- new version → re-prompt
+    if c.choice ~= "allowed" and c.choice ~= "local" then return nil end
+    if (tonumber(c.version) or 0) < REPROMPT_BELOW then return nil end  -- predates current data categories → re-prompt
     return c.choice  -- "allowed" or "local"
 end
 
