@@ -75,6 +75,90 @@ function VoidScout_IsUploadAllowed()
 end
 
 ----------------------------------------------------------------------
+-- Damage-sim sharing (optional, off unless the player turns it on).
+-- VoidScoutDB.sim_opt_in: true / false once chosen, nil = never asked.
+-- It only does anything with uploads allowed: ScoreEngine adds the sim
+-- snapshot to fight records, and the uploader sends sim=1 with logs.
+----------------------------------------------------------------------
+local SIM_TEXT =
+    "Help make the |cff00c7ffvoidscout.io|r damage sim accurate. With this on, the uploader also sends each boss and Mythic+ pull in detail: every cast, hit, crit, buff and resource change for the players in your group, plus their stats, talents and gear.\n\n" ..
+    "It is stored under anonymous IDs -- no names, no link to a character -- and used only for the sim. Anyone can remove their data with VoidScout's |cffffd700Delete + go local|r.\n\n" ..
+    "Off unless you turn it on. Change it anytime: right-click the VoidScout minimap button."
+
+local function setSim(on, quiet)
+    VoidScoutDB.sim_opt_in = on and true or false
+    if quiet then return end
+    if on then
+        print("|cff00c7ff[VoidScout]|r damage-sim sharing |cff20ff20ON|r. Thanks! Turn it off anytime: right-click the minimap button.")
+    else
+        print("|cff00c7ff[VoidScout]|r damage-sim sharing |cffffaa20OFF|r.")
+    end
+end
+
+local simDlg
+local function BuildSimDialog()
+    if simDlg then return simDlg end
+    local f = CreateFrame("Frame", "VoidScout_SimDialog", UIParent, "BackdropTemplate")
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:SetSize(460, 250)
+    f:SetPoint("CENTER")
+    f:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 },
+    })
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -16)
+    title:SetText("|cff00c7ffVoidScout|r - damage sim")
+
+    local body = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    body:SetPoint("TOPLEFT", 22, -46)
+    body:SetPoint("TOPRIGHT", -22, -46)
+    body:SetJustifyH("LEFT")
+    body:SetJustifyV("TOP")
+    body:SetText(SIM_TEXT)
+
+    local yes = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    yes:SetSize(180, 26)
+    yes:SetPoint("BOTTOMLEFT", 22, 18)
+    yes:SetText("Share anonymously")
+    yes:SetScript("OnClick", function()
+        setSim(true)
+        f:Hide()
+    end)
+
+    local no = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    no:SetSize(180, 26)
+    no:SetPoint("BOTTOMRIGHT", -22, 18)
+    no:SetText("No thanks")
+    no:SetScript("OnClick", function()
+        setSim(false)
+        f:Hide()
+    end)
+
+    -- Closing with X is not a choice: the popup can come back next login.
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", -4, -4)
+
+    f:Hide()
+    simDlg = f
+    return f
+end
+
+-- Opened by /vs sim, and once at login for players who allowed uploads
+-- but never chose about the sim.
+function VoidScout_ShowSimDialog()
+    BuildSimDialog():Show()
+end
+
+----------------------------------------------------------------------
 -- Dialog
 ----------------------------------------------------------------------
 local dlg
@@ -82,7 +166,7 @@ local function BuildDialog()
     if dlg then return dlg end
     local f = CreateFrame("Frame", "VoidScout_ConsentDialog", UIParent, "BackdropTemplate")
     f:SetFrameStrata("FULLSCREEN_DIALOG")
-    f:SetSize(640, 540)
+    f:SetSize(640, 600)
     f:SetPoint("CENTER")
     f:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -116,8 +200,32 @@ local function BuildDialog()
         "|cffffd700We do NOT upload:|r chat/whisper content, bag contents, bank, currency, system info, anything from protected actions, anything from players not visible to your client.\n\n" ..
         "|cffffd700Note about Blizzard API:|r the server ALSO fetches public Blizzard profile data (gear, raid progress, M+ keys) for characters already in our database. That runs server-side against Blizzard's official API — independent of this consent.\n\n" ..
         "|cffffd700How uploading works:|r WoW addons can't send data over the web, so uploads go through a small separate app you install once -- |cffffd700voidscout-uploader|r (open-source, a single ~7 MB file). Get it at |cff00c7ffvoidscout.io/install|r. Without it nothing uploads -- the addon still works fully (bundle-backed scores + tooltips).\n\n" ..
-        "Local-only mode: the addon's panel + tooltip + bundle-backed scores keep working. We just won't record new fight summaries or profile captures to your SavedVariables, so the uploader has nothing to drain."
+        "Local-only mode: the addon's panel + tooltip + bundle-backed scores keep working. We just won't record new fight summaries or profile captures to your SavedVariables, so the uploader has nothing to drain.\n\n" ..
+        "|cffffd700Damage sim (optional):|r the box below also sends each pull in detail (casts, hits, buffs, stats, talents, gear) under anonymous IDs. Hover it for details."
     )
+
+    -- Optional damage-sim sharing, unticked unless the player already turned it on. With
+    -- uploads already allowed a click saves at once (right-click the minimap button to
+    -- toggle it); otherwise "Allow uploads" saves it.
+    local sim = CreateFrame("CheckButton", "VoidScout_ConsentSimCheck", f, "UICheckButtonTemplate")
+    sim:SetSize(26, 26)
+    sim:SetPoint("BOTTOMLEFT", 18, 54)
+    local simLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    simLabel:SetPoint("LEFT", sim, "RIGHT", 2, 1)
+    simLabel:SetPoint("RIGHT", f, "RIGHT", -22, 0)
+    simLabel:SetJustifyH("LEFT")
+    simLabel:SetText("Also share anonymous fight details for the |cff00c7ffvoidscout.io|r damage sim (optional)")
+    sim:SetScript("OnClick", function(self)
+        if readConsent() == "allowed" then setSim(self:GetChecked()) end
+    end)
+    sim:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Damage sim", 1, 1, 1)
+        GameTooltip:AddLine(SIM_TEXT, 0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    sim:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f:SetScript("OnShow", function() sim:SetChecked(VoidScoutDB.sim_opt_in == true) end)
 
     local btn_allow = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     btn_allow:SetSize(170, 26)
@@ -125,7 +233,9 @@ local function BuildDialog()
     btn_allow:SetText("Allow uploads")
     btn_allow:SetScript("OnClick", function()
         writeConsent("allowed")
-        print("|cff00c7ff[VoidScout]|r uploads ENABLED. Change anytime with |cffffd700/vs|r.")
+        setSim(sim:GetChecked(), true)
+        print("|cff00c7ff[VoidScout]|r uploads ENABLED" .. (VoidScoutDB.sim_opt_in and ", damage-sim sharing ON" or "") ..
+            ". Change anytime: right-click the minimap button.")
         f:Hide()
     end)
 
@@ -135,6 +245,7 @@ local function BuildDialog()
     btn_local:SetText("Local-only (no upload)")
     btn_local:SetScript("OnClick", function()
         writeConsent("local")
+        setSim(false, true)
         print("|cff00c7ff[VoidScout]|r local-only mode. Your captures stay off the wire. Change with |cffffd700/vs|r.")
         f:Hide()
     end)
@@ -151,6 +262,7 @@ local function BuildDialog()
     btn_delete:SetScript("OnClick", function()
         VoidScoutDB = VoidScoutDB or {}
         writeConsent("local")
+        setSim(false, true)
         -- Resolve identity at request time.
         local name  = UnitName("player") or ""
         local realm = GetRealmName() or ""
@@ -230,6 +342,9 @@ f:SetScript("OnEvent", function(self, event)
             -- Delay one second so the login chat dust settles before
             -- popping a fullscreen dialog at the user.
             C_Timer.After(1.0, ShowDialog)
+        elseif readConsent() == "allowed" and VoidScoutDB.sim_opt_in == nil then
+            -- Uploads allowed before the damage sim existed: ask once.
+            C_Timer.After(3.0, VoidScout_ShowSimDialog)
         end
         self:UnregisterAllEvents()
     end

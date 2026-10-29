@@ -226,6 +226,21 @@ f:SetScript("OnEvent", function(_, event)
                         e.matched, ok and "|cff33ff33OK|r" or "|cffff5555CHECK|r"))
                 end
             end
+        elseif msg == "sim" or msg == "sim on" or msg == "sim off" then
+            -- Damage-sim sharing (opt-in): after each boss, per-spell damage for the group
+            -- and your own stats/talents/gear go up with your fights, stored anonymously.
+            VoidScoutDB = VoidScoutDB or {}
+            if msg == "sim" and VoidScout_ShowSimDialog then
+                VoidScout_ShowSimDialog()
+                return
+            end
+            if msg == "sim on" then VoidScoutDB.sim_opt_in = true end
+            if msg == "sim off" then VoidScoutDB.sim_opt_in = false end
+            if VoidScoutDB.sim_opt_in then
+                print("|cff00c7ffVoidScout|r damage-sim sharing: |cff20ff20ON|r. After each boss your fight details (per-spell damage, your stats, talents and gear) go up with your fights, stored anonymously. |cffaaaaaa/vs sim off|r to stop.")
+            else
+                print("|cff00c7ffVoidScout|r damage-sim sharing: |cffffaa20OFF|r. |cffaaaaaa/vs sim on|r to help the voidscout.io damage sim: per-spell damage, your stats, talents and gear after each boss, stored anonymously.")
+            end
         elseif msg == "status" then
             if VoidScout.LFGPanel and VoidScout.LFGPanel.Status then
                 VoidScout.LFGPanel:Status()
