@@ -96,6 +96,77 @@ local function safe_num(v, default)
 end
 
 ----------------------------------------------------------------------
+-- Damage-sim snapshot (opt-in: VoidScoutDB.sim_opt_in, /vs sim on). Read out of combat,
+-- like the rest of the scorecard. Every group member gets their per-spell damage from
+-- Blizzard's meter; the player also gets what only the live game knows: sheet stats,
+-- talents, hero tree, unspent points, gear and the VoidSequencer version. The server
+-- stores it under an anonymous id made from the GUID, never with the name.
+----------------------------------------------------------------------
+local function sim_spells(guid)
+    if not (C_DamageMeter and C_DamageMeter.GetCombatSessionSourceFromType) then return nil end
+    local ok, src = pcall(C_DamageMeter.GetCombatSessionSourceFromType,
+        Enum.DamageMeterSessionType.Current, Enum.DamageMeterType.DamageDone, guid)
+    if not ok or not src or not src.combatSpells then return nil end
+    local out = {}
+    for _, sp in ipairs(src.combatSpells) do
+        local id, amt = safe_num(sp.spellID, nil), safe_num(sp.totalAmount, nil)
+        if id and amt and amt > 0 then out[#out + 1] = { id = id, amount = amt } end
+    end
+    return out
+end
+
+local function sim_self()
+    local s = { level = UnitLevel("player") }
+    s.str = select(2, UnitStat("player", 1))
+    s.agi = select(2, UnitStat("player", 2))
+    s.int = select(2, UnitStat("player", 4))
+    s.crit, s.haste, s.mastery = GetCritChance(), GetHaste(), GetMasteryEffect()
+    s.vers = GetCombatRatingBonus(CR_VERSATILITY_DAMAGE_DONE) + GetVersatilityBonus(CR_VERSATILITY_DAMAGE_DONE)
+    local si = GetSpecialization and GetSpecialization()
+    s.spec = si and GetSpecializationInfo(si) or nil
+    if C_ClassTalents then
+        s.hero = C_ClassTalents.GetActiveHeroTalentSpec and C_ClassTalents.GetActiveHeroTalentSpec() or nil
+        local cfg = C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()
+        if cfg and C_Traits then
+            if C_Traits.GenerateImportString then s.talents = C_Traits.GenerateImportString(cfg) end
+            -- unspent points: every currency left in the class and spec trees
+            local tree = s.spec and C_ClassTalents.GetTraitTreeForSpec and C_ClassTalents.GetTraitTreeForSpec(s.spec)
+            if tree and C_Traits.GetTreeCurrencyInfo then
+                local unspent = 0
+                for _, c in ipairs(C_Traits.GetTreeCurrencyInfo(cfg, tree, false) or {}) do
+                    unspent = unspent + (c.quantity or 0)
+                end
+                s.unspent = unspent
+            end
+        end
+    end
+    s.gear = {}
+    for slot = 1, 17 do
+        local link = GetInventoryItemLink("player", slot)
+        if link then
+            s.gear[#s.gear + 1] = { slot = slot, id = GetInventoryItemID("player", slot),
+                ilvl = C_Item.GetDetailedItemLevelInfo(link) }
+        end
+    end
+    if C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo then
+        s.key = C_ChallengeMode.GetActiveKeystoneInfo()
+    end
+    if C_AddOns and C_AddOns.GetAddOnMetadata then
+        s.vseq = C_AddOns.GetAddOnMetadata("VoidSequencer", "Version")
+    end
+    s.vseq_rev = VoidSequencerDB and VoidSequencerDB.seededRev or nil
+    return s
+end
+
+local function sim_snapshot(guid, is_local)
+    if not (VoidScoutDB and VoidScoutDB.sim_opt_in) then return nil end
+    local ok, snap = pcall(function()
+        return { v = 1, guid = guid, spells = sim_spells(guid), self = is_local and sim_self() or nil }
+    end)
+    return ok and snap or nil
+end
+
+----------------------------------------------------------------------
 -- Core capture: read all metrics, build per-player aggregate.
 -- KEY DEFENSIVE PATTERN: never read source.name (ConditionalSecret).
 -- Use source.sourceGUID and map to a clean name via our own roster.
@@ -496,6 +567,7 @@ local function build_scorecard(encounterID, difficulty, encounterName, durationS
                 death_time = p.death_time,
                 mass_wipe_time = mass_wipe_time,
                 class = p.class,
+                sim = sim_snapshot(p.guid, is_local),
             },
             -- Data quality flag: "ok" = trust this player's axes for
             -- aggregation. "stale" = DC/AFK/reset/late-arrival, exclude

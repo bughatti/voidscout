@@ -50,6 +50,7 @@ Every player seen in logged content is graded on eight plain-English axes, which
 | `/vs` | Show your recent logged fights |
 | `/vs consent` | Show your current upload setting |
 | `/vs optout` / `/vs optin` | Switch uploads off or on (opting out also requests server-side deletion) |
+| `/vs sim` | Turn damage-sim sharing on or off (also: right-click the minimap button) |
 | `/vs autosetup` | Re-run the one-time damage meter setup |
 
 ---
@@ -78,7 +79,8 @@ A first-run dialog explains exactly what's collected before anything leaves your
 
 - **Local-only mode** — captures stay on your machine; nothing is uploaded
 - **Uploads on** — per-fight combat-performance summaries are sent to be scored. Never chat, mail, bags, or anything from players who weren't in your fight
-- **Delete anytime** — `/vs optout` plus a deletion request removes your data from the server; the addon keeps working in local-only mode
+- **Damage sim (optional, off by default)** — tick the box to also share each boss and Mythic+ pull in detail (casts, hits, buffs, resources, stats, talents, gear) for the [voidscout.io](https://voidscout.io) damage sim. Stored under anonymous IDs: no names, no link to a character
+- **Delete anytime** — `/vs optout` plus a deletion request removes your data from the server, damage-sim data included; the addon keeps working in local-only mode
 
 ### The companion uploader (optional)
 WoW addons can't make web requests, so contributing your data uses a small separate app, **voidscout-uploader** — open source (MIT), a single ~7 MB file, nothing else to install. It watches your saved data and uploads new fights in the background.

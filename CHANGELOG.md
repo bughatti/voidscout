@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.37.15] — 2026-10-29
+
+### Added
+- **Damage-sim sharing (optional, off by default).** A new box in the upload dialog lets you also share each boss and Mythic+ pull in detail for the voidscout.io damage sim: casts, hits, buffs, resources, stats, talents and gear. It is stored under anonymous IDs, with no names. If you already allow uploads, VoidScout asks you once. Turn it on or off anytime: right-click the minimap button, or `/vs sim`.
+- The minimap button tooltip shows whether damage-sim sharing is on.
+
 ## [0.37.14] — 2026-10-28
 
 ### Removed

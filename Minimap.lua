@@ -90,10 +90,14 @@ local function CreateMinimapButton()
                 mode = "|cffffaa20LOCAL-ONLY|r"
             end
             GameTooltip:AddLine("Mode: " .. mode, 0.85, 0.85, 0.85)
+            if c == "allowed" then
+                GameTooltip:AddLine("Damage sim: " .. (VoidScoutDB.sim_opt_in and "|cff20ff20sharing|r" or "|cffaaaaaaoff|r"),
+                    0.85, 0.85, 0.85)
+            end
             GameTooltip:AddLine(" ", 1, 1, 1)
         end
         GameTooltip:AddLine("Left-click: open scoring panel", 0.85, 0.85, 0.85)
-        GameTooltip:AddLine("Right-click: consent / opt-out", 0.85, 0.85, 0.85)
+        GameTooltip:AddLine("Right-click: uploads, damage sim, opt-out", 0.85, 0.85, 0.85)
         GameTooltip:AddLine("Drag: reposition around minimap", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
