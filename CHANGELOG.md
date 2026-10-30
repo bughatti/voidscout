@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.37.16] — 2026-10-29
+
+### Fixed
+- **Last boss of a Mythic+ key scored from the whole run.** When a key completes, Blizzard's damage meter switches to the whole run, so the last boss read about ten times its own damage. VoidScout now reads that boss's own meter session.
+- **Damage-sim sharing inside a key:** your fight details were lost on every pull when the game hid a value. Now only the hidden values are left out.
+
+### Changed
+- **Combat logging, when VoidScout manages it, now starts when you enter a Mythic dungeon** instead of when the key starts. That way the game's snapshot of the group at the key start (gear, talents, buffs) is in the log. It stops when you leave. Logging you turned on yourself is never touched.
+
 ## [0.37.15] — 2026-10-29
 
 ### Added

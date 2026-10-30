@@ -72,10 +72,16 @@ end
 ----------------------------------------------------------------------
 -- Pull a session safely. Returns combatSources array or nil.
 ----------------------------------------------------------------------
-local function pull_session(metricType)
+-- sid: the fight's own session (fight_session_id); nil reads the Current session.
+local function pull_session(metricType, sid)
     if not C_DamageMeter or not C_DamageMeter.GetCombatSessionFromType then return nil end
-    local ok, session = pcall(C_DamageMeter.GetCombatSessionFromType,
-        Enum.DamageMeterSessionType.Current, metricType)
+    local ok, session
+    if sid and C_DamageMeter.GetCombatSessionFromID then
+        ok, session = pcall(C_DamageMeter.GetCombatSessionFromID, sid, metricType)
+    else
+        ok, session = pcall(C_DamageMeter.GetCombatSessionFromType,
+            Enum.DamageMeterSessionType.Current, metricType)
+    end
     if not ok or not session or not session.combatSources then return nil end
     return session
 end
@@ -95,6 +101,25 @@ local function safe_num(v, default)
     return v
 end
 
+-- The meter session of the fight that just ended: the newest one as long as the fight
+-- (within 5 s or 15%). The Current session isn't always that fight: when a Mythic+ key
+-- completes it holds the whole run, so the last boss read ten times its own damage.
+-- nil (no match, or lengths hidden) falls back to Current.
+local function fight_session_id(durationSec)
+    durationSec = safe_num(durationSec, nil)
+    if not (durationSec and C_DamageMeter and C_DamageMeter.GetAvailableCombatSessions) then return nil end
+    local ok, list = pcall(C_DamageMeter.GetAvailableCombatSessions)
+    if not ok or type(list) ~= "table" then return nil end
+    local best
+    for _, s in ipairs(list) do
+        local id, d = safe_num(s.sessionID, nil), safe_num(s.durationSeconds, nil)
+        if id and d and math.abs(d - durationSec) <= math.max(5, durationSec * 0.15) and (not best or id > best) then
+            best = id
+        end
+    end
+    return best
+end
+
 ----------------------------------------------------------------------
 -- Damage-sim snapshot (opt-in: VoidScoutDB.sim_opt_in, /vs sim on). Read out of combat,
 -- like the rest of the scorecard. Every group member gets their per-spell damage from
@@ -102,10 +127,15 @@ end
 -- talents, hero tree, unspent points, gear and the VoidSequencer version. The server
 -- stores it under an anonymous id made from the GUID, never with the name.
 ----------------------------------------------------------------------
-local function sim_spells(guid)
+local function sim_spells(guid, sid)
     if not (C_DamageMeter and C_DamageMeter.GetCombatSessionSourceFromType) then return nil end
-    local ok, src = pcall(C_DamageMeter.GetCombatSessionSourceFromType,
-        Enum.DamageMeterSessionType.Current, Enum.DamageMeterType.DamageDone, guid)
+    local ok, src
+    if sid and C_DamageMeter.GetCombatSessionSourceFromID then
+        ok, src = pcall(C_DamageMeter.GetCombatSessionSourceFromID, sid, Enum.DamageMeterType.DamageDone, guid)
+    else
+        ok, src = pcall(C_DamageMeter.GetCombatSessionSourceFromType,
+            Enum.DamageMeterSessionType.Current, Enum.DamageMeterType.DamageDone, guid)
+    end
     if not ok or not src or not src.combatSpells then return nil end
     local out = {}
     for _, sp in ipairs(src.combatSpells) do
@@ -115,55 +145,80 @@ local function sim_spells(guid)
     return out
 end
 
+-- A string the game didn't hide (secret values can't be saved or compared).
+local function safe_str(v)
+    if type(v) ~= "string" or (_issecret and _issecret(v)) then return nil end
+    return v
+end
+
+-- Inside an active Mythic+ key some of these come back as secret values, and adding or
+-- saving one fails. So every value is checked, and each part runs on its own: a part
+-- that fails is left out instead of losing the whole snapshot.
 local function sim_self()
-    local s = { level = UnitLevel("player") }
-    s.str = select(2, UnitStat("player", 1))
-    s.agi = select(2, UnitStat("player", 2))
-    s.int = select(2, UnitStat("player", 4))
-    s.crit, s.haste, s.mastery = GetCritChance(), GetHaste(), GetMasteryEffect()
-    s.vers = GetCombatRatingBonus(CR_VERSATILITY_DAMAGE_DONE) + GetVersatilityBonus(CR_VERSATILITY_DAMAGE_DONE)
-    local si = GetSpecialization and GetSpecialization()
-    s.spec = si and GetSpecializationInfo(si) or nil
-    if C_ClassTalents then
-        s.hero = C_ClassTalents.GetActiveHeroTalentSpec and C_ClassTalents.GetActiveHeroTalentSpec() or nil
-        local cfg = C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()
-        if cfg and C_Traits then
-            if C_Traits.GenerateImportString then s.talents = C_Traits.GenerateImportString(cfg) end
-            -- unspent points: every currency left in the class and spec trees
-            local tree = s.spec and C_ClassTalents.GetTraitTreeForSpec and C_ClassTalents.GetTraitTreeForSpec(s.spec)
-            if tree and C_Traits.GetTreeCurrencyInfo then
-                local unspent = 0
-                for _, c in ipairs(C_Traits.GetTreeCurrencyInfo(cfg, tree, false) or {}) do
-                    unspent = unspent + (c.quantity or 0)
-                end
-                s.unspent = unspent
+    local s = {}
+    pcall(function()
+        s.level = safe_num(UnitLevel("player"), nil)
+        s.str = safe_num(select(2, UnitStat("player", 1)), nil)
+        s.agi = safe_num(select(2, UnitStat("player", 2)), nil)
+        s.int = safe_num(select(2, UnitStat("player", 4)), nil)
+        s.crit = safe_num(GetCritChance(), nil)
+        s.haste = safe_num(GetHaste(), nil)
+        s.mastery = safe_num(GetMasteryEffect(), nil)
+        local vr = safe_num(GetCombatRatingBonus(CR_VERSATILITY_DAMAGE_DONE), nil)
+        local vb = safe_num(GetVersatilityBonus(CR_VERSATILITY_DAMAGE_DONE), nil)
+        if vr and vb then s.vers = vr + vb end
+    end)
+    pcall(function()
+        local si = safe_num(GetSpecialization and GetSpecialization(), nil)
+        s.spec = si and safe_num((GetSpecializationInfo(si)), nil) or nil
+    end)
+    pcall(function()
+        if not C_ClassTalents then return end
+        s.hero = safe_num(C_ClassTalents.GetActiveHeroTalentSpec and C_ClassTalents.GetActiveHeroTalentSpec(), nil)
+        local cfg = safe_num(C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID(), nil)
+        if not (cfg and C_Traits) then return end
+        if C_Traits.GenerateImportString then s.talents = safe_str(C_Traits.GenerateImportString(cfg)) end
+        -- unspent points: every currency left in the class and spec trees
+        local tree = s.spec and C_ClassTalents.GetTraitTreeForSpec and C_ClassTalents.GetTraitTreeForSpec(s.spec)
+        if tree and C_Traits.GetTreeCurrencyInfo then
+            local unspent = 0
+            for _, c in ipairs(C_Traits.GetTreeCurrencyInfo(cfg, tree, false) or {}) do
+                unspent = unspent + safe_num(c.quantity, 0)
             end
+            s.unspent = unspent
         end
-    end
+    end)
     s.gear = {}
     for slot = 1, 17 do
-        local link = GetInventoryItemLink("player", slot)
-        if link then
-            s.gear[#s.gear + 1] = { slot = slot, id = GetInventoryItemID("player", slot),
-                ilvl = C_Item.GetDetailedItemLevelInfo(link) }
+        pcall(function()
+            local link = safe_str(GetInventoryItemLink("player", slot))
+            local id = safe_num(GetInventoryItemID("player", slot), nil)
+            if link and id then
+                s.gear[#s.gear + 1] = { slot = slot, id = id, ilvl = safe_num(C_Item.GetDetailedItemLevelInfo(link), nil) }
+            end
+        end)
+    end
+    pcall(function()
+        if C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo then
+            s.key = safe_num(C_ChallengeMode.GetActiveKeystoneInfo(), nil)
         end
-    end
-    if C_ChallengeMode and C_ChallengeMode.GetActiveKeystoneInfo then
-        s.key = C_ChallengeMode.GetActiveKeystoneInfo()
-    end
-    if C_AddOns and C_AddOns.GetAddOnMetadata then
-        s.vseq = C_AddOns.GetAddOnMetadata("VoidSequencer", "Version")
-    end
-    s.vseq_rev = VoidSequencerDB and VoidSequencerDB.seededRev or nil
+    end)
+    pcall(function()
+        if C_AddOns and C_AddOns.GetAddOnMetadata then
+            s.vseq = safe_str(C_AddOns.GetAddOnMetadata("VoidSequencer", "Version"))
+        end
+        s.vseq_rev = safe_num(VoidSequencerDB and VoidSequencerDB.seededRev, nil)
+    end)
     return s
 end
 
-local function sim_snapshot(guid, is_local)
+local function sim_snapshot(guid, is_local, sid)
     if not (VoidScoutDB and VoidScoutDB.sim_opt_in) then return nil end
-    local ok, snap = pcall(function()
-        return { v = 1, guid = guid, spells = sim_spells(guid), self = is_local and sim_self() or nil }
-    end)
-    return ok and snap or nil
+    local snap = { v = 1, guid = guid }
+    local ok, spells = pcall(sim_spells, guid, sid)
+    if ok then snap.spells = spells end
+    if is_local then snap.self = sim_self() end
+    return snap
 end
 
 ----------------------------------------------------------------------
@@ -216,12 +271,13 @@ local function build_scorecard(encounterID, difficulty, encounterName, durationS
     local guid_to_name = build_guid_to_name()
 
     -- Pull each metric we care about
-    local damageSession   = pull_session(Enum.DamageMeterType.DamageDone)
-    local healSession     = pull_session(Enum.DamageMeterType.HealingDone)
-    local interruptSession= pull_session(Enum.DamageMeterType.Interrupts)
-    local avoidSession    = pull_session(Enum.DamageMeterType.AvoidableDamageTaken)
-    local deathsSession   = pull_session(Enum.DamageMeterType.Deaths)
-    local dispelsSession  = pull_session(Enum.DamageMeterType.Dispels)
+    local sid = fight_session_id(durationSec)
+    local damageSession   = pull_session(Enum.DamageMeterType.DamageDone, sid)
+    local healSession     = pull_session(Enum.DamageMeterType.HealingDone, sid)
+    local interruptSession= pull_session(Enum.DamageMeterType.Interrupts, sid)
+    local avoidSession    = pull_session(Enum.DamageMeterType.AvoidableDamageTaken, sid)
+    local deathsSession   = pull_session(Enum.DamageMeterType.Deaths, sid)
+    local dispelsSession  = pull_session(Enum.DamageMeterType.Dispels, sid)
 
     if not damageSession then
         return nil, "no damage session returned"
@@ -567,7 +623,7 @@ local function build_scorecard(encounterID, difficulty, encounterName, durationS
                 death_time = p.death_time,
                 mass_wipe_time = mass_wipe_time,
                 class = p.class,
-                sim = sim_snapshot(p.guid, is_local),
+                sim = sim_snapshot(p.guid, is_local, sid),
             },
             -- Data quality flag: "ok" = trust this player's axes for
             -- aggregation. "stale" = DC/AFK/reset/late-arrival, exclude

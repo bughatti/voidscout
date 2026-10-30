@@ -87,6 +87,7 @@ local member_was_alive = {}          -- {[unitID] = bool}
 local cl_we_enabled = false      -- did VoidScout flip it on?
 local cl_active_contexts = 0     -- nesting count (encounter inside M+ run)
 local cl_stop_pending = false    -- our deferred LoggingCombat(false) hasn't run yet
+local cl_armed = false           -- holding a context for being inside a Mythic dungeon
 
 -- Gated debug print. Enable via VoidScoutDB.debug = true (no public
 -- toggle yet; flip manually in SavedVariables to re-enable trace).
@@ -115,7 +116,8 @@ local function cl_start()
         -- legitimately ≥1 between bosses).
         local in_key = C_ChallengeMode and C_ChallengeMode.GetActiveChallengeMapID
                        and (C_ChallengeMode.GetActiveChallengeMapID() or 0) > 0
-        if not in_key then
+        -- Inside a Mythic dungeon the count is legitimately >=1 too (cl_armed).
+        if not in_key and not cl_armed then
             cl_active_contexts = 0
             if cl_we_enabled and LoggingCombat() then
                 LoggingCombat(false)
@@ -178,6 +180,27 @@ local function cl_stop()
     _persist_cl()
 end
 
+-- Logging inside Mythic dungeons. As a key goes in the game writes every player's
+-- COMBATANT_INFO (gear, talents, stats, buffs) to the combat log, but only if logging is
+-- already on: switched on at CHALLENGE_MODE_START it opened a moment too late, and three
+-- runs had no key-start scan. So it's on from zoning into a Mythic dungeon (23 = Mythic,
+-- 8 = Mythic Keystone) until leaving it, as one more context.
+local function in_mythic_dungeon()
+    local _, itype, diff = GetInstanceInfo()
+    return itype == "party" and (diff == 23 or diff == 8)
+end
+
+local function update_cl_arm()
+    local want = in_mythic_dungeon()
+    if want and not cl_armed then
+        cl_armed = true
+        cl_start()
+    elseif not want and cl_armed then
+        cl_armed = false
+        cl_stop()
+    end
+end
+
 -- Reconcile state at addon load. Handles the "reload mid-key after a taint
 -- error" case: in-memory state was wiped, but the combatlog file is still
 -- open on disk. If we previously enabled it and there's no longer an active
@@ -219,13 +242,15 @@ local function reconcile_cl_state_on_load()
         in_key = (C_ChallengeMode.GetActiveChallengeMapID() or 0) > 0
     end
     local in_enc = IsEncounterInProgress and IsEncounterInProgress() or false
+    local in_dungeon = in_mythic_dungeon()
 
-    if in_key or in_enc then
+    if in_key or in_enc or in_dungeon then
         -- In a key, the PLAYER_ENTERING_WORLD backfill (OnChallengeStart)
         -- re-adds the run's context, so keep only the encounter's here;
         -- restoring the saved run context too would count it twice and
-        -- the log would never reach 0 contexts at key end.
-        if in_key then
+        -- the log would never reach 0 contexts at key end. Same for the
+        -- Mythic-dungeon context, which update_cl_arm re-adds on zone-in.
+        if in_key or in_dungeon then
             cl_active_contexts = in_enc and 1 or 0
         else
             cl_active_contexts = 1
@@ -1763,6 +1788,7 @@ function mod:Init()
     -- dropped player), /reload mid-run, or addon loaded after countdown.
     -- See OnPlayerEnteringWorldChallengeCheck() below.
     f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("ZONE_CHANGED_NEW_AREA")  -- in and out of Mythic dungeons (update_cl_arm)
     f:RegisterEvent("PARTY_LEADER_CHANGED")
     f:RegisterEvent("GROUP_ROSTER_UPDATE")
     f:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -1791,10 +1817,13 @@ function mod:Init()
             OnChallengeCompleted()
         elseif event == "CHALLENGE_MODE_RESET" then
             OnChallengeReset()
+        elseif event == "ZONE_CHANGED_NEW_AREA" then
+            update_cl_arm()
         elseif event == "PLAYER_ENTERING_WORLD" then
             -- Defer 1.5s so GetInstanceInfo + C_ChallengeMode APIs are
             -- populated (these can return placeholder data the first
             -- instant after zone-in).
+            C_Timer.After(1.5, update_cl_arm)
             C_Timer.After(1.5, function()
                 if current_run_id then return end  -- normal flow already fired
                 if not (C_ChallengeMode and C_ChallengeMode.GetActiveChallengeMapID) then return end
