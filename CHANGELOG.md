@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.37.17] — 2026-10-31
+
+### Fixed
+- **Follower dungeons:** the NPC followers were scored as players after every boss ("scored 5 players"). Only real players are scored now.
+
 ## [0.37.16] — 2026-10-29
 
 ### Fixed

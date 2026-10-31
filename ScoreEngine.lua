@@ -236,6 +236,9 @@ local function build_guid_to_name()
         if not UnitExists(unit) then return end
         local guid = UnitGUID(unit)
         if not guid or _issecret(guid) then return end
+        -- Players only: follower-dungeon NPCs fill party slots too ("Creature-..."
+        -- GUIDs) and were scored as players (same rule as FightRecorder's roster).
+        if not guid:find("^Player%-") then return end
         local n, realm = UnitName(unit)
         if not n then return end
         -- UnitName returns realm="" for your OWN character on home realm,
