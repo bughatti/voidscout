@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.37.18] — 2026-11-01
+
+### Changed
+- **Void hub icon:** the list of Void addons is up to date (adds VoidGather and VoidSweep, refreshed descriptions).
+
 ## [0.37.17] — 2026-10-31
 
 ### Fixed
