@@ -2,13 +2,14 @@
 ## Title: |cff00c7ffVoidScout|r
 ## Notes: Utility-aware applicant scoring for LFG premade groups
 ## Author: Vede
-## Version: 0.37.19
-## SavedVariables: VoidScoutDB, VoidHubCharDB
-## SavedVariablesPerCharacter: VoidScoutCharDB
+## Version: 0.37.20
+## SavedVariables: VoidScoutDB
+## SavedVariablesPerCharacter: VoidScoutCharDB, VoidHubCharDB
 ## DefaultState: enabled
 ## IconTexture: Interface\Icons\INV_Misc_Spyglass_03
 
 # Embedded VoidLib so users do not need a separate addon download.
+CharSettings.lua
 Libs\VoidLib\VoidLib.lua
 Libs\VoidLib\Secrets.lua
 Libs\VoidLib\Logger.lua

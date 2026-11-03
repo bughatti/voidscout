@@ -15,6 +15,10 @@
 
 VoidScout = VoidScout or {}
 
+-- Settings are per character (CharSettings.lua); scores, runs, scans and
+-- consent stay account-wide.
+select(2, ...).CharSettings.Register("VoidScout", "VoidScoutDB", { "enabled", "suppressRIOTooltip" })
+
 -- The global spec functions only exist with deprecation fallbacks loaded.
 local GetSpecialization = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or GetSpecialization
 local GetSpecializationInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo

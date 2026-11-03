@@ -93,6 +93,7 @@ WoW addons can't make web requests, so contributing your data uses a small separ
 
 ## Good to Know
 
+- **Settings are per character.** Each character keeps its own VoidScout settings, and a new character starts with the settings of the one you played last, so nothing resets when you update. Right-click the Void hub icon by your minimap and pick **Copy settings from...** to take another character's settings for one Void addon or all of them. Scores and scans stay shared.
 - Behavior scores exist only for players who've been logged through VoidScout, so coverage grows as more people contribute. For everyone else, rating and progress carry the vetting.
 - VoidScout turns on Blizzard's damage meter setting for you on first run — it needs it to capture fights.
 
