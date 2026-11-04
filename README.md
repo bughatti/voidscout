@@ -69,7 +69,7 @@ Every player seen in logged content is graded on eight plain-English axes, which
 - **Clean capture.** Scoring data comes from Blizzard's official damage meter, not the combat log — so VoidScout can't cause taint errors in your other addons.
 - **Server-side scoring.** With your consent, per-fight summaries are scored at [voidscout.io](https://voidscout.io).
 - **Built-in score bundle.** Scores for a large pool of players ship inside the addon and are refreshed every week, so lookups are instant and work offline.
-- **RaiderIO-friendly.** If you have RaiderIO installed, its M+ rating shows alongside the behavior scores.
+- **Blizzard's M+ rating built in.** Tooltips and the group finder panel show each player's M+ rating and best timed keys next to the behavior scores, straight from Blizzard. When another rating addon adds the same lines, VoidScout hides the duplicates.
 
 ---
 
@@ -103,7 +103,6 @@ WoW addons can't make web requests, so contributing your data uses a small separ
 
 - **WoW 12.1.5** (Midnight Season 2)
 - Standalone — nothing else required
-- **RaiderIO** recommended — adds M+ rating next to the behavior scores
 
 ---
 

@@ -12,7 +12,7 @@
 --
 -- This is the THIN-CLIENT contract — the addon just captures what the
 -- player did (their declared label) and when. The actual scoring happens
--- on the backend by pulling WCL log data + applying the algorithms.
+-- on the backend by applying the algorithms to the fight data.
 --
 -- Commitment axis: per-pug stay rate = (attempts you stayed) / (total in
 -- that leader's pug). Backend aggregates across many leaders for a player's
@@ -76,7 +76,7 @@ local member_deaths_this_pull = {}   -- {[player_name] = count}
 local member_was_alive = {}          -- {[unitID] = bool}
 
 -- Combat log auto-toggle state. The combat log file (Logs/WoWCombatLog-*.txt)
--- is the same data WCL parses — captures every event we lose to taint via
+-- has every event — it captures what we lose to taint via
 -- C_DamageMeter. We auto-enable /combatlog at encounter/run start and
 -- auto-disable at end. We only disable if WE enabled it; if the user had
 -- it on manually before us we leave it alone.
@@ -135,9 +135,7 @@ local function cl_start()
         cl_we_enabled = true
     else
         -- /combatlog is already ON — user enabled it manually, or
-        -- another addon (WCL Client, Archon, Raider.IO, BigWigs,
-        -- DBM logger plugin) requested it for their own logging
-        -- pipeline. NEVER claim ownership in this case. cl_stop()
+        -- another addon requested it for its own logging pipeline. NEVER claim ownership in this case. cl_stop()
         -- only acts when cl_we_enabled is true, so leaving it false
         -- guarantees we won't touch their log when the encounter
         -- ends. They get to manage their own logging.
@@ -216,8 +214,8 @@ local function reconcile_cl_state_on_load()
     -- NEVER touch a log we don't own. The persisted `cl_we_enabled`
     -- flag is the authoritative signal of ownership: it's only set
     -- true when cl_start() actually called LoggingCombat(true). If
-    -- the user manually `/combatlog`'d, or WCL Client / Archon /
-    -- Raider.IO / BigWigs flipped it on, cl_we_enabled stays false
+    -- the user manually `/combatlog`'d, or another addon flipped it
+    -- on, cl_we_enabled stays false
     -- and we leave their log alone — even on /reload, even outside
     -- combat. Their logging pipeline is their business.
     --
@@ -1291,7 +1289,7 @@ local function OnChallengeStart()
         end
 
         -- Build the group from current party. For each member, try PlayerScan
-        -- cache first (deep_inspected records have spec + ilvl + rio). Fall
+        -- cache first (deep_inspected records have spec + ilvl + M+ rating). Fall
         -- back to expected-ilvl-for-key only if we have no inspect data.
         local players = {}
         local comp_str = {}

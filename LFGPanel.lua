@@ -1,10 +1,10 @@
 ----------------------------------------------------------------------
--- VoidScout LFGPanel — RaiderIO-style transparent dual profile.
+-- VoidScout LFGPanel — transparent dual profile.
 --
 -- v0.8.0: Drop applicant list. Two profile panels:
 --   * MY panel  : always-visible, shows current player's data
 --   * THEIR panel: appears to LEFT of MY when hovering an applicant
--- Transparent tight rows, yellow section headers, like RaiderIO.
+-- Transparent tight rows, yellow section headers.
 ----------------------------------------------------------------------
 
 local mod = {}
@@ -66,37 +66,12 @@ local COACH_MAX = 75
 ----------------------------------------------------------------------
 -- Data sources
 ----------------------------------------------------------------------
-local function ReadRaiderIO(name, realm)
-    local rio = _G.RaiderIO
-    if not rio or not rio.GetProfile then return nil end
-    local ok, profile = pcall(rio.GetProfile, name, realm)
-    if not ok or not profile then return nil end
-    local mp = profile.mythicKeystoneProfile
-    if not mp then return nil end
-    -- 0 is truthy in Lua -- `currentScore or previousScore` showed "0" for anyone who
-    -- hasn't timed a key this season. Fall back to last season's score, flagged.
-    local cur, prev = mp.currentScore, mp.previousScore
-    if cur and cur > 0 then return cur, mp, false end
-    if prev and prev > 0 then return prev, mp, true end
-    return cur, mp, false
-end
-
-----------------------------------------------------------------------
--- WCL/Archon parse re-presentation REMOVED. VoidScout does not scrape or
--- re-present third-party (Archon / WarcraftLogs / RaiderIO) parse data — we
--- show only our own axis scores + Blizzard-sourced progress. Nil stub kept so
--- callers no-op cleanly.
-----------------------------------------------------------------------
-local function ReadArchonWCL(name, realm)
-    return nil
-end
-
-----------------------------------------------------------------------
--- Archon/WCL tooltip scraper REMOVED. We do not ingest or re-present third-party
--- parse data (Archon / WarcraftLogs / RaiderIO). No-op stub kept so Init() and
--- any other caller don't break.
-----------------------------------------------------------------------
-local function InstallArchonScraper()
+-- Your own live M+ rating from Blizzard (other players: the PlayerScan cache / bundle).
+local function ReadOwnRating(name, realm)
+    if name ~= UnitName("player") or (realm and realm ~= "" and realm ~= GetRealmName()) then return nil end
+    if not (C_ChallengeMode and C_ChallengeMode.GetOverallDungeonScore) then return nil end
+    local ok, score = pcall(C_ChallengeMode.GetOverallDungeonScore)
+    if ok and score and score > 0 then return score end
 end
 
 local function LookupVoidScout(name, realm)
@@ -311,8 +286,7 @@ local function GetMyProfile()
     end
 
     local vs = LookupVoidScout(name, realm)
-    local rio, _, rio_is_prev = ReadRaiderIO(name, realm)
-    local wcl = ReadArchonWCL(name, realm)
+    local rating = ReadOwnRating(name, realm)
 
     -- Override local-compute scores with bundle's canonical values when
     -- present. The bundle is the single source of truth (matches website,
@@ -354,7 +328,7 @@ local function GetMyProfile()
     return {
         name = name, realm = realm, class = classFile, spec = specName, ilvl = ilvl,
         vs = vs, declared = declared, inferred = nil,
-        rio = rio, rio_is_prev = rio_is_prev, wcl = wcl,
+        rating = rating,
         scan = scan, badges = badges, raid_progress = raid_progress,
         is_preview = false,
     }
@@ -368,7 +342,7 @@ local function MockApplicant(idx)
         { name = "Telepoof",   realm = "Stormrage",    class = "MAGE",        spec = "Frost",    ilvl = 291,
           vs = { vs_overall = 88, commitment = 100, axes = {Damage=95, Interrupts=70, Dispels=nil, Avoidance=88, Activity=80, Survival=100, Teamwork=78}},
           declared = "D",     inferred = "PURE BOSS",
-          rio = 3120, wcl = 95, archon = 3027, best_key = 14,
+          rating = 3120, best_key = 14,
           raid_progress = {
               Voidspire = { N = 6, H = 6, M = ">=1" },
               Dreamrift = { N = 1, H = 1, M = 1 },
@@ -379,24 +353,24 @@ local function MockApplicant(idx)
         { name = "Aurvyn",     realm = "Trollbane",    class = "PALADIN",     spec = "Holy",     ilvl = 285,
           vs = { vs_overall = 72, commitment = 88, axes = {Damage=40, Interrupts=nil, Dispels=90, Avoidance=85, Activity=70, Survival=100, Teamwork=82}},
           declared = "H",     inferred = "HEAL",
-          rio = 2680, wcl = 76,
+          rating = 2680,
           badges = { {label="AOTC Voidspire",kind="aotc"}, {label="KS Hero",kind="key"} } },
         { name = "Boomboompow",realm = "Stormreaver",  class = "WARRIOR",     spec = "Protection", ilvl = 290,
           vs = { vs_overall = 65, commitment = 45, axes = {Damage=50, Interrupts=60, Dispels=nil, Avoidance=70, Activity=55, Survival=80, Teamwork=68}},
           declared = "T",     inferred = "TANK",
-          rio = nil,          wcl = nil,
+          rating = nil,
           badges = { {label="AOTC Voidspire",kind="aotc"} } },
         { name = "Dudubull",   realm = "Aegwynn",      class = "DRUID",       spec = "Restoration", ilvl = 278,
           vs = nil,
           declared = "H",     inferred = nil,
-          rio = 2200, wcl = 45,
+          rating = 2200,
           badges = nil },
     }
     return samples[((idx - 1) % #samples) + 1]
 end
 
 ----------------------------------------------------------------------
--- Profile panel widget — transparent, dense, RaiderIO-style.
+-- Profile panel widget — transparent, dense.
 -- Returns a frame with :SetData(profile) method.
 ----------------------------------------------------------------------
 local function CreateProfilePanel(name, parent)
@@ -482,11 +456,11 @@ local function CreateProfilePanel(name, parent)
     p.divExt:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, rowY - 4)
     p.divExt:SetHeight(1)
 
-    -- WCL section (per-raid N/H/M progress + parse avg)
-    p.wclHdr = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    p.wclHdr:SetText("Raid Progress")
-    p.wclHdr:SetTextColor(1, 0.82, 0)
-    p.wclHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, rowY - 14)
+    -- Raid progress section (per-raid N/H/M)
+    p.raidHdr = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    p.raidHdr:SetText("Raid Progress")
+    p.raidHdr:SetTextColor(1, 0.82, 0)
+    p.raidHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, rowY - 14)
 
     -- Raid-only VoidScout score (right side of header). Lets a player who
     -- specializes in raid be judged on raid-only performance, not diluted
@@ -499,74 +473,70 @@ local function CreateProfilePanel(name, parent)
     -- FIXED x offsets so all align. Progress is Blizzard achievements + our own
     -- kills (no third-party zone aggregate).
     -- "Abyss" = The Venomous Abyss (Season 2, current tier) -- listed first.
-    local WCL_RAIDS = { "Abyss", "Voidspire", "Dreamrift", "MQD" }
+    local RAID_ROWS = { "Abyss", "Voidspire", "Dreamrift", "MQD" }
     local COL_N_X = SECTION_PAD + 78         -- "N 6/6" left edge
     local COL_H_X = SECTION_PAD + 118        -- "H 6/6"
     local COL_M_X = SECTION_PAD + 158        -- "M >=1/6"
-    p.wclRows = {}
-    local wclY = rowY - 32
-    for _, raidName in ipairs(WCL_RAIDS) do
+    p.raidRows = {}
+    local raidY = rowY - 32
+    for _, raidName in ipairs(RAID_ROWS) do
         local lbl = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         lbl:SetText(raidName)
-        lbl:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, wclY)
+        lbl:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, raidY)
         local valN = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        valN:SetPoint("TOPLEFT", p, "TOPLEFT", COL_N_X, wclY)
+        valN:SetPoint("TOPLEFT", p, "TOPLEFT", COL_N_X, raidY)
         valN:SetJustifyH("LEFT")
         local valH = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        valH:SetPoint("TOPLEFT", p, "TOPLEFT", COL_H_X, wclY)
+        valH:SetPoint("TOPLEFT", p, "TOPLEFT", COL_H_X, raidY)
         valH:SetJustifyH("LEFT")
         local valM = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        valM:SetPoint("TOPLEFT", p, "TOPLEFT", COL_M_X, wclY)
+        valM:SetPoint("TOPLEFT", p, "TOPLEFT", COL_M_X, raidY)
         valM:SetJustifyH("LEFT")
-        p.wclRows[raidName] = { lbl = lbl, valN = valN, valH = valH, valM = valM }
-        wclY = wclY - 14
+        p.raidRows[raidName] = { lbl = lbl, valN = valN, valH = valH, valM = valM }
+        raidY = raidY - 14
     end
-    -- Parse Avg row removed (May 29 2026) — we don't pull WCL parse data.
-    -- Keep wclParseVal as a hidden no-op fontstring so SetData calls don't error.
-    p.wclParseVal = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    p.wclParseVal:Hide()
-    local wclEndY = wclY
+    local raidEndY = raidY
 
-    -- Divider between WCL and Dungeons/M+
+    -- Divider between raid progress and Dungeons/M+
     p.divMp = p:CreateTexture(nil, "ARTWORK")
     p.divMp:SetColorTexture(0.7, 0.6, 0.0, 0.6)
-    p.divMp:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, wclEndY - 4)
-    p.divMp:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 4)
+    p.divMp:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, raidEndY - 4)
+    p.divMp:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 4)
     p.divMp:SetHeight(1)
 
     -- Dungeons/M+ section
     p.mpHdr = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     p.mpHdr:SetText("Dungeons/M+")
     p.mpHdr:SetTextColor(1, 0.82, 0)
-    p.mpHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, wclEndY - 14)
+    p.mpHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, raidEndY - 14)
 
     -- M+-only VoidScout score (right side of header).
     p.vsMpScore = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    p.vsMpScore:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 14)
+    p.vsMpScore:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 14)
     p.vsMpScore:SetJustifyH("RIGHT")
 
-    p.rioLbl = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    p.rioLbl:SetText("M+ Score")
-    p.rioLbl:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, wclEndY - 32)
+    p.scoreLbl = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.scoreLbl:SetText("M+ Score")
+    p.scoreLbl:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, raidEndY - 32)
 
-    p.rioVal = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    p.rioVal:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 32)
-    p.rioVal:SetJustifyH("RIGHT")
+    p.scoreVal = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    p.scoreVal:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 32)
+    p.scoreVal:SetJustifyH("RIGHT")
 
     p.keyLbl = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     p.keyLbl:SetText("Top Keys")
-    p.keyLbl:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, wclEndY - 46)
+    p.keyLbl:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, raidEndY - 46)
 
     p.keyVal = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    p.keyVal:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 46)
+    p.keyVal:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 46)
     p.keyVal:SetJustifyH("RIGHT")
     p.keyVal:SetWordWrap(false)
 
     -- Divider between Dungeons/M+ and Probability Score
     p.divProb = p:CreateTexture(nil, "ARTWORK")
     p.divProb:SetColorTexture(0.7, 0.6, 0.0, 0.6)
-    p.divProb:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, wclEndY - 64)
-    p.divProb:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 64)
+    p.divProb:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, raidEndY - 64)
+    p.divProb:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 64)
     p.divProb:SetHeight(1)
 
     -- Probability Score section: headline + 4 coaching lines.
@@ -575,10 +545,10 @@ local function CreateProfilePanel(name, parent)
     p.probHdr = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     p.probHdr:SetText("Probability")
     p.probHdr:SetTextColor(1, 0.82, 0)
-    p.probHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, wclEndY - 74)
+    p.probHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, raidEndY - 74)
 
     p.probScore = p:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    p.probScore:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 74)
+    p.probScore:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 74)
     p.probScore:SetJustifyH("RIGHT")
     p.probScore:SetText("-")
 
@@ -588,7 +558,7 @@ local function CreateProfilePanel(name, parent)
 
     -- 4 coaching rows (axis-derived, behavioral)
     p.probCoach = {}
-    local pcY = wclEndY - 108
+    local pcY = raidEndY - 108
     for i = 1, 4 do
         local row = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         row:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, pcY)
@@ -603,18 +573,18 @@ local function CreateProfilePanel(name, parent)
     -- Divider between Probability and Achievements
     p.divAch = p:CreateTexture(nil, "ARTWORK")
     p.divAch:SetColorTexture(0.7, 0.6, 0.0, 0.6)
-    p.divAch:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, wclEndY - 168)
-    p.divAch:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 168)
+    p.divAch:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, raidEndY - 168)
+    p.divAch:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 168)
     p.divAch:SetHeight(1)
 
     -- Achievements section (CE/AOTC/KSH from PlayerScan inspect cache)
     p.achHdr = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     p.achHdr:SetText("Achievements")
     p.achHdr:SetTextColor(1, 0.82, 0)
-    p.achHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, wclEndY - 178)
+    p.achHdr:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, raidEndY - 178)
 
     p.badges = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    p.badges:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, wclEndY - 196)
+    p.badges:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD + 4, raidEndY - 196)
     p.badges:SetPoint("RIGHT", p, "RIGHT", -SECTION_PAD, 0)
     p.badges:SetJustifyH("LEFT")
     p.badges:SetWordWrap(true)
@@ -623,14 +593,14 @@ local function CreateProfilePanel(name, parent)
     -- Footer divider — repositioned by SetData when badges expand
     p.divFoot = p:CreateTexture(nil, "ARTWORK")
     p.divFoot:SetColorTexture(0.4, 0.4, 0.4, 0.4)
-    p.divFoot:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, wclEndY - 224)
-    p.divFoot:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, wclEndY - 224)
+    p.divFoot:SetPoint("TOPLEFT", p, "TOPLEFT", SECTION_PAD, raidEndY - 224)
+    p.divFoot:SetPoint("TOPRIGHT", p, "TOPRIGHT", -SECTION_PAD, raidEndY - 224)
     p.divFoot:SetHeight(1)
 
     p._baseRowY    = rowY
-    p._badgesY     = wclEndY - 196
-    p._baselineFoot = wclEndY - 224
-    local totalHeight = math.abs(wclEndY - 224) + 14
+    p._badgesY     = raidEndY - 196
+    p._baselineFoot = raidEndY - 224
+    local totalHeight = math.abs(raidEndY - 224) + 14
     p:SetHeight(totalHeight)
 
     function p:SetData(d)
@@ -646,10 +616,9 @@ local function CreateProfilePanel(name, parent)
             self.vsSubVal:SetText("|cff808080-|r")
             self.declVal:SetText("|cff808080-|r")
             for _, r in pairs(self.axes) do r.val:SetText("-"); r.val:SetTextColor(0.5, 0.5, 0.5) end
-            self.rioVal:SetText("-");      self.rioVal:SetTextColor(0.5, 0.5, 0.5)
-            self.wclParseVal:SetText("-"); self.wclParseVal:SetTextColor(0.5, 0.5, 0.5)
+            self.scoreVal:SetText("-");      self.scoreVal:SetTextColor(0.5, 0.5, 0.5)
             self.keyVal:SetText("-");      self.keyVal:SetTextColor(0.5, 0.5, 0.5)
-            for _, row in pairs(self.wclRows) do
+            for _, row in pairs(self.raidRows) do
                 row.valN:SetText("|cff707070-|r")
                 row.valH:SetText("|cff707070-|r")
                 row.valM:SetText("|cff707070-|r")
@@ -868,14 +837,14 @@ local function CreateProfilePanel(name, parent)
             end
         end
 
-        -- WCL section: per-raid progress (N/H/M) at fixed column positions
+        -- Raid progress: per-raid N/H/M at fixed column positions
         local function fmtCount(killed, total)
             if not killed then return "|cff707070-|r" end
             if type(killed) == "string" then return killed end
             return tostring(killed) .. "/" .. tostring(total)
         end
         local rp = d.raid_progress or {}
-        for raidName, row in pairs(self.wclRows) do
+        for raidName, row in pairs(self.raidRows) do
             local r = rp[raidName] or {}
             local total = ({ Abyss = 8, Voidspire = 6, Dreamrift = 1, MQD = 2 })[raidName] or 0
             row.valN:SetText("N " .. fmtCount(r.N, total))
@@ -884,18 +853,18 @@ local function CreateProfilePanel(name, parent)
         end
 
         -- Dungeons/M+ section
-        -- Priority: d.rio (live RIO API call) > scan.rio_score (cached at enrich) > scraped_rio
-        local rio_val = d.rio or (d.scan and (d.scan.rio_score or d.scan.scraped_rio))
-        local rio_prev = (d.rio and d.rio_is_prev) or (not d.rio and d.scan and d.scan.rio_score_is_prev)
-        if rio_val and rio_prev then
-            self.rioVal:SetText(tostring(math.floor(rio_val)) .. " |cff808080(last season)|r")
-            self.rioVal:SetTextColor(0.75, 0.75, 0.75)
-        elseif rio_val then
-            self.rioVal:SetText(tostring(rio_val))
-            self.rioVal:SetTextColor(1, 1, 1)
+        -- Priority: your live rating > PlayerScan cache (Blizzard API at enrich)
+        local rating_val = d.rating or (d.scan and d.scan.rio_score)
+        local rating_prev = not d.rating and d.scan and d.scan.rio_score_is_prev
+        if rating_val and rating_prev then
+            self.scoreVal:SetText(tostring(math.floor(rating_val)) .. " |cff808080(last season)|r")
+            self.scoreVal:SetTextColor(0.75, 0.75, 0.75)
+        elseif rating_val then
+            self.scoreVal:SetText(tostring(math.floor(rating_val)))
+            self.scoreVal:SetTextColor(1, 1, 1)
         else
-            self.rioVal:SetText("-")
-            self.rioVal:SetTextColor(0.5, 0.5, 0.5)
+            self.scoreVal:SetText("-")
+            self.scoreVal:SetTextColor(0.5, 0.5, 0.5)
         end
 
         -- Top 3 keys: prevent inflation from one lucky carry.
@@ -959,16 +928,14 @@ local myPanel, theirPanel, headerCheck = nil, nil, nil
 
 ----------------------------------------------------------------------
 -- External overlay management
--- Hide RaiderIO's standalone tooltip panels (RaiderIO addon stays
--- ENABLED so we can still read its data via GetProfile API).
+-- Hide other rating addons' standalone tooltip panels while ours shows
+-- (matched by their frame names).
 ----------------------------------------------------------------------
 local OVERLAY_CANDIDATES = {
-    -- RaiderIO standalone tooltips/profile frames
     "RaiderIO_ProfileTooltip", "RaiderIO_Profile", "RaiderIOProfileFrame",
     "RaiderIO_PvP", "RaiderIOMythicPlusTooltipFrame",
     "RaiderIO_SearchTooltip", "RaiderIOProfileTooltip",
     "RaiderIO_GroupFinderTooltip",
-    -- ArchonTooltip (WCL parses)
     "ArchonTooltip", "ArchonTooltipFrame", "ArchonTooltipDB",
     "ArchonTooltipProfileFrame",
 }
@@ -981,7 +948,7 @@ local function FindExternalOverlays()
             found[#found + 1] = { name = name, frame = f }
         end
     end
-    -- Scan global frame namespace for ANY frame named RaiderIO* or Archon*
+    -- Scan the global frame namespace for any frame with one of those prefixes
     for k, v in pairs(_G) do
         if type(k) == "string" and (k:match("^RaiderIO") or k:match("^Archon"))
            and type(v) == "table" then
@@ -1280,11 +1247,8 @@ end
 -- These paths bypass TooltipDataProcessor (Blizzard builds them directly)
 -- so we hook the functions instead.
 ----------------------------------------------------------------------
--- Suppress RaiderIO + Archon lines from any GameTooltip. We render our
--- own consolidated VoidScout section; RIO/Archon tooltip output becomes
--- redundant noise. Both addons stay ENABLED (we still call RIO's
--- :GetProfile() API to read their data); only the visual tooltip is
--- blanked.
+-- Hide other addons' duplicate rating / best-run lines from GameTooltip:
+-- our VoidScout section shows the same data. Only the lines are blanked.
 local function SuppressThirdPartyTooltipLines()
     if VoidScoutDB and VoidScoutDB.suppressRIOTooltip == false then return end
     if not GameTooltip or not GameTooltip.NumLines then return end
@@ -1337,9 +1301,9 @@ local function InstallLFGTooltipHooks()
             local full = info.leaderName
             local n, r = full:match("^([^-]+)-(.+)$")
             if not n then n = full end
-            local live_rio = info.leaderOverallDungeonScore
+            local live_rating = info.leaderOverallDungeonScore
             pcall(function()
-                VoidScout.PlayerScan:AppendTooltipLines(GameTooltip, n, r, live_rio)
+                VoidScout.PlayerScan:AppendTooltipLines(GameTooltip, n, r, live_rating)
             end)
 
             -- Combined Probability: leader + you (+ visible members).

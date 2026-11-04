@@ -165,13 +165,13 @@ M[3182] = {
     applicable_axes = default_axes(),
     mechanics = {
         -- Light Eruption — only Light feather players can interrupt.
-        -- ID 1243852 unverified in latest WCL pull (was always interrupted
+        -- ID 1243852 unverified in the latest log pull (was always interrupted
         -- before reaching cast table); keeping as the working hypothesis.
         { id="light_eruption", type="interrupt", trigger_spell_id=1243852,
           success_window=3, engagement_window=5,
           capability="interrupt", declared_duty="kicks", critical=true },
         -- Immortal Flame (1243320) — boss buff acting as absorb, healers
-        -- need to magic-dispel. Verified via WCL boss-buffs table 2026-05-30.
+        -- need to magic-dispel. Verified in kill logs' boss buffs 2026-05-30.
         -- (Was previously named "Eternal Burns" with wrong ID 1244344.)
         { id="immortal_flame", type="dispel", trigger_spell_id=1243320,
           success_window=8,
@@ -204,7 +204,7 @@ M[3183] = {
         -- (1284525) handled via teamwork/avoidance below
     },
     teamwork_soak_spells = { 1266897, 1284525 },  -- Light Siphon, Galvanize
-    -- Dawnlight Barrier (1253770) — verified via WCL: players gain this as a
+    -- Dawnlight Barrier (1253770) — verified in kill logs: players gain this as a
     -- debuff/carrier from Environment casts (27/fight = the "Dawn Crystal"
     -- mechanic). Carrier players have positional/soak duties.
     teamwork_carrier_auras = { 1253770 },          -- Dawnlight Barrier

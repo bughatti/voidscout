@@ -614,16 +614,6 @@ f:SetScript("OnEvent", function(_, event)
                 local v = rp[r] or {}
                 print(("  %s: N=%s H=%s M=%s"):format(r, tostring(v.N), tostring(v.H), tostring(v.M)))
             end
-            local arc = rp.archon or {}
-            print(("  archon table present: %s"):format(rp.archon and "YES" or "NO"))
-            for _, d in ipairs({"N","H","M"}) do
-                local s = arc[d]
-                if s then
-                    print(("    %s: progress=%s total=%s avg=%s"):format(d, tostring(s.progress), tostring(s.total), tostring(s.avg)))
-                else
-                    print(("    %s: nil"):format(d))
-                end
-            end
 
         elseif msg == "scan probe" or msg == "scan probe me" then
             if VoidScout.PlayerScan and VoidScout.PlayerScan.Probe then
@@ -698,11 +688,10 @@ f:SetScript("OnEvent", function(_, event)
                         hits = hits + 1
                         local ach_n = 0
                         if p.achievements then for _ in pairs(p.achievements) do ach_n = ach_n + 1 end end
-                        print(("  %s-%s %s lvl%d ilvl=%s spec=%s ach=%d rio=%s arc=%s wcl=%s"):format(
+                        print(("  %s-%s %s lvl%d ilvl=%s spec=%s ach=%d M+=%s"):format(
                             p.name, p.realm or "?", p.class or "?", p.level or 0,
                             tostring(p.ilvl or "?"), p.spec or "-", ach_n,
-                            tostring(p.scraped_rio or "-"), tostring(p.scraped_archon or "-"),
-                            tostring(p.scraped_wcl or "-")))
+                            tostring(p.rio_score or "-")))
                     end
                 end
                 print(("|cff00c7ffVoidScout scan|r %d match(es) for '%s'"):format(hits, target))

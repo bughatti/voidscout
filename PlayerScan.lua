@@ -10,7 +10,7 @@ local GetInspectSpecialization = (C_SpecializationInfo and C_SpecializationInfo.
 --
 -- Silent background player scanner. Captures everything we can about
 -- every player we encounter — nameplates, group/raid, mouseover/target,
--- LFG applicants, and tooltip enrichments (Archon WCL, RIO M+).
+-- LFG applicants, and Blizzard's M+ rating for players we can see.
 --
 -- Lives under VoidScoutDB.playerScan so the data shares storage with
 -- the rest of VoidScout (single SavedVars). Public API:
@@ -56,7 +56,7 @@ local function Stats()
 end
 
 -- ============================================================
--- Naming convention normalization (matches RIO / WCL / Archon / Carried)
+-- Naming convention normalization (the common region/realm/name slug)
 --
 --   Region: lowercase  ("us", "eu", "kr", "tw", "cn")
 --   Realm:  display name kept; slug = lowercase + spaces/apostrophes/dashes stripped
@@ -105,69 +105,28 @@ function PlayerScan.Normalize(name, realm, region)
 end
 
 -- ============================================================
--- ArchonTooltipDB capture — REMOVED (May 28 2026)
---
--- We used to hook ArchonTooltip.AddProviderV2 to intercept Archon's
--- bundled DB at load time. That gave us per-player WCL data without
--- the user mouseovering each player. Functional but a gray-zone use
--- of Archon's internal Lua structures (not their published API).
---
--- For legal cleanliness we now source per-boss raid kill data from
--- Blizzard's official Battle.net API server-side. The addon no longer
--- intercepts Archon's data registration.
---
--- We still scrape tooltip TEXT when the user actively hovers a player
--- (separate ScrapeTooltip function below) — that's reading UI text
--- already visually displayed, not their internal data structures.
+-- Season 2 (12.1) dungeons by challenge map ID (in-game /vs s2 probe 2026-08-19),
+-- with the same short names the bundle uses. Blizzard's rating summary only lists
+-- current-season runs, so no season filter is needed.
 -- ============================================================
-local archonProviders = {}
-local archonHookInstalled = false
-
-local function ForceLoadArchonDBs() end   -- no-op kept so Init doesn't break
-
--- Compatibility stub: callers used to get parse data here. Now always nil.
--- Server-side Blizzard API provides the equivalent per-boss data.
-local function ArchonLookup(name, realm)
-    return nil
-end
-
-PlayerScan.ArchonLookup = ArchonLookup
-
--- ============================================================
--- Current-season dungeon whitelist. RIO's sortedDungeons returns
--- entries for ALL dungeons the player has scored in (current +
--- historical seasons), so we filter to ONLY the active 8 to keep
--- the "top timed keys" display relevant.
--- ============================================================
--- Season 2 (12.1) pool -- verified via the in-game /vs s2 probe 2026-08-19
--- (challenge maps 588/587/586/584/585/249/250/399). Matched by name: RIO's dungeon
--- records carry the name reliably; instance-map ids for these weren't probed.
-local MIDNIGHT_S2_NAMES = {
-    ["Altar of Fangs"]=true, ["Murder Row"]=true, ["Den of Nalorakk"]=true,
-    ["The Blinding Vale"]=true, ["Voidscar Arena"]=true, ["Kings' Rest"]=true,
-    ["King's Rest"]=true, ["Temple of Sethraliss"]=true, ["Ruby Life Pools"]=true,
+local DUNGEON_SHORT = {
+    [588] = "AF", [587] = "MR", [586] = "DN", [584] = "TBV",
+    [585] = "VA", [249] = "KR", [250] = "TS", [399] = "RLP",
 }
 
--- Current-season keys only (top-keys must not mix seasons). Was S1-only through
--- 12.1.5, so every Season 2 key was filtered out and "Top Keys" read "-".
-local function is_current_season_dungeon(d)
-    if not d then return false end
-    if d.name and MIDNIGHT_S2_NAMES[d.name] then return true end
-    return false
-end
-
 -- ============================================================
--- Enrichment — pull RIO + Archon data for a player and cache it
--- on the player record. Cheap: both are in-memory lookups.
--- Called at first capture + when stale (>1h).
+-- Enrichment — Blizzard's M+ rating and best keys for a player, cached
+-- on the player record. Called at first capture + when stale (>1h).
 -- ============================================================
 local ENRICH_TTL = 3600
 -- Bump this whenever EnrichPlayer captures a NEW field that existing
 -- records don't have. Records with schema < current force a re-enrich
 -- regardless of TTL — otherwise users never see fields added post-install.
 -- v3 (2026-06-01): top_keys now filtered to Midnight S1 only.
--- v4 (2026-10-18): top_keys = Season 2 pool; rio_score falls back to last season when 0.
-local ENRICH_SCHEMA = 4
+-- v4 (2026-10-18): top_keys = Season 2 pool; rating falls back to last season when 0.
+-- v5 (2026-11-03): Blizzard's rating summary only; older records drop their cached
+-- rating / keys so the bundle shows until Blizzard's API refreshes them.
+local ENRICH_SCHEMA = 5
 
 local function EnrichPlayer(guid, force)
     local p = guid and Players()[guid]
@@ -175,65 +134,52 @@ local function EnrichPlayer(guid, force)
     local now = time()
     local schema_ok = (p.enrich_schema or 0) >= ENRICH_SCHEMA
     if not force and schema_ok and p.enriched_at and (now - p.enriched_at) < ENRICH_TTL then return end
-
-    -- RaiderIO — note: function call (not method), passes name+realm
-    if _G.RaiderIO and _G.RaiderIO.GetProfile then
-        local ok, profile = pcall(_G.RaiderIO.GetProfile, p.name, p.realm)
-        if ok and profile then
-            local mp = profile.mythicKeystoneProfile
-            if mp then
-                -- 0 is TRUTHY in Lua: `currentScore or previousScore` returned 0 for anyone
-                -- who hasn't run a key yet this season, hiding last season's score.
-                local cur, prev = mp.currentScore, mp.previousScore
-                if cur and cur > 0 then
-                    p.rio_score, p.rio_score_is_prev = cur, nil
-                elseif prev and prev > 0 then
-                    p.rio_score, p.rio_score_is_prev = prev, true
-                else
-                    p.rio_score, p.rio_score_is_prev = cur, nil
-                end
-                -- Our own character: Blizzard's live rating beats RaiderIO's
-                -- (staler) snapshot. Applies to CaptureSelf and TrickleEnrich alike.
-                if guid == UnitGUID("player") and C_ChallengeMode
-                   and C_ChallengeMode.GetOverallDungeonScore then
-                    local ok_l, live = pcall(C_ChallengeMode.GetOverallDungeonScore)
-                    if ok_l and live and live > 0 then
-                        p.rio_score, p.rio_score_is_prev = live, nil
-                    end
-                end
-                p.rio_score_prev = prev
-                -- Extract top 3 timed keys from sortedDungeons. RIO sorts by
-                -- level desc; chests > 0 means timed (key completed within
-                -- timer). We take the top 3 so a single lucky carry doesn't
-                -- inflate the apparent skill level.
-                if mp.sortedDungeons then
-                    local timed = {}
-                    for _, d in ipairs(mp.sortedDungeons) do
-                        if (d.chests or 0) > 0 and (d.level or 0) > 0
-                           and is_current_season_dungeon(d.dungeon) then
-                            table.insert(timed, {
-                                level = d.level,
-                                dungeon = (d.dungeon and (d.dungeon.shortName or d.dungeon.name)) or "?",
-                            })
-                        end
-                    end
-                    table.sort(timed, function(a, b) return a.level > b.level end)
-                    p.top_keys = { timed[1], timed[2], timed[3] }
-                    p.best_key_level   = timed[1] and timed[1].level   or nil
-                    p.best_key_dungeon = timed[1] and timed[1].dungeon or nil
-                end
-            end
-            local rp = profile.raidProfile
-            if rp and rp.summary then p.rio_raid_summary = rp.summary end
-        end
+    if not schema_ok then
+        p.rio_score, p.rio_score_is_prev, p.rio_score_prev, p.rio_raid_summary = nil, nil, nil, nil
+        p.top_keys, p.best_key_level, p.best_key_dungeon = nil, nil, nil
+        p.enriched_at = nil
+        p.enrich_schema = ENRICH_SCHEMA
     end
 
-    -- Archon enrichment REMOVED (May 28 2026). Per-boss raid data now
-    -- sourced server-side from Blizzard's official API. ArchonLookup is
-    -- a no-op stub; this block stays for future reactivation if needed.
+    -- M+ rating and best timed keys from Blizzard's own API. It needs a unit for the
+    -- player (you, your group, your target / mouseover); without one the bundled rating
+    -- fills in and the record is retried next pass. The field keeps its old name: the
+    -- uploader reads rio_score.
+    local isSelf = guid == UnitGUID("player")
+    local unit = (isSelf and "player") or (UnitTokenFromGUID and UnitTokenFromGUID(guid))
+    local summary
+    if unit and C_PlayerInfo and C_PlayerInfo.GetPlayerMythicPlusRatingSummary then
+        local ok, s = pcall(C_PlayerInfo.GetPlayerMythicPlusRatingSummary, unit)
+        if ok and type(s) == "table" and not (issecretvalue and issecretvalue(s.currentSeasonScore)) then
+            summary = s
+        end
+    end
+    local live
+    if isSelf and C_ChallengeMode and C_ChallengeMode.GetOverallDungeonScore then
+        local ok_l, s = pcall(C_ChallengeMode.GetOverallDungeonScore)
+        if ok_l and s and s > 0 then live = s end
+    end
+    if not summary then
+        if live then p.rio_score, p.rio_score_is_prev = live, nil end
+        return
+    end
+
+    local score = live or summary.currentSeasonScore
+    -- A read replaces the old values, zero / empty included (a new season starts at 0)
+    p.rio_score, p.rio_score_is_prev = (score and score > 0) and score or nil, nil
+    -- Top 3 timed keys (a single lucky carry shouldn't set the skill level)
+    local timed = {}
+    for _, r in ipairs(summary.runs or {}) do
+        if r.finishedSuccess and (r.bestRunLevel or 0) > 0 then
+            timed[#timed + 1] = { level = r.bestRunLevel, dungeon = DUNGEON_SHORT[r.challengeModeID] or "?" }
+        end
+    end
+    table.sort(timed, function(a, b) return a.level > b.level end)
+    p.top_keys = timed[1] and { timed[1], timed[2], timed[3] } or nil
+    p.best_key_level = timed[1] and timed[1].level or nil
+    p.best_key_dungeon = timed[1] and timed[1].dungeon or nil
 
     p.enriched_at = now
-    p.enrich_schema = ENRICH_SCHEMA
 end
 
 PlayerScan.EnrichPlayer = EnrichPlayer
@@ -456,20 +402,16 @@ local function InitDB()
         d.stats[k] = d.stats[k] or 0
     end
 
-    -- One-time cleanup: wipe scraped_wcl / scraped_archon / scraped_rio fields
-    -- from existing player records. We stopped scraping tooltip text (May 29
-    -- 2026) for legal cleanliness. Removing the fields means uploader won't
-    -- re-send stale data to the server.
+    -- One-time cleanup: drop the old scraped_* tooltip fields from player records
+    -- (tooltip scraping stopped May 2026), so the uploader never re-sends them.
     if not d.scrapedFieldsCleanupV1 then
         local cleared = 0
         for _, p in pairs(d.players) do
-            if p.scraped_wcl or p.scraped_archon or p.scraped_rio or p.scraped_at then
-                p.scraped_wcl    = nil
-                p.scraped_archon = nil
-                p.scraped_rio    = nil
-                p.scraped_at     = nil
-                cleared = cleared + 1
+            local hit = false
+            for k in pairs(p) do
+                if type(k) == "string" and k:sub(1, 8) == "scraped_" then p[k] = nil; hit = true end
             end
+            if hit then cleared = cleared + 1 end
         end
         d.scrapedFieldsCleanupV1 = true
         if cleared > 0 then
@@ -688,8 +630,8 @@ local function CaptureBasic(unit)
     Players()[guid] = p
     if was_new then
         Stats().total_seen = (Stats().total_seen or 0) + 1
-        -- Enrich brand-new players immediately (RIO + Archon are local in-memory
-        -- lookups, very cheap). Stale players get refreshed by TrickleEnrich.
+        -- Enrich brand-new players immediately (cheap Blizzard API calls).
+        -- Stale players get refreshed by TrickleEnrich.
         pcall(EnrichPlayer, guid)
     end
 
@@ -797,7 +739,7 @@ end
 -- ============================================================
 -- Tooltip injection — append a "VoidScout" section showing the most
 -- decision-useful fields (achievements, best key, Midnight zone progress,
--- parse avg) onto any player tooltip. Coexists with Archon/RIO sections.
+-- parse avg) onto any player tooltip.
 -- ============================================================
 
 -- Shared appender — builds + adds the VoidScout section to `tooltip` for the
@@ -814,7 +756,7 @@ end
 --   1. badges      e.g. "CE Voidspire   AOTC Dreamrift   KS Legend"
 --   2. Mythic kills per raid + total       "Mythic:  3/9 bosses  (18 kills)"
 --   3. Heroic kills per raid + total       "Heroic:  9/9 bosses  (47 kills)"
---   4. Top keys + RIO                      "+20 AA  +20 WS  +19 POS    RIO 3805"
+--   4. Top keys + M+ rating                "+20 AA  +20 WS  +19 POS    M+ 3805"
 --   5. Timed bracket counts                "Timed: 4@+20-21  8@+18-19  12@+15-17"
 --   6. Util Score + 3 highlights           "Util Score: 73 (Kicks 89, ...)  n=72"
 --
@@ -825,7 +767,7 @@ local RAID_ORDER       = { "Abyss", "Voidspire", "Dreamrift", "MQD" }
 local TOTAL_BOSSES     = 17
 
 -- Returns {unique_bosses_killed, total_kill_count} for a given difficulty
--- key ("M"/"H"/"N"). Prefers local archon data when available, falls back
+-- key ("M"/"H"/"N"). Prefers local kill data when available, falls back
 -- to bundle's mk (mythic unique only) + mkn (totals per raid+diff).
 local function GetTierStats(p, bundled, diff)
     local uniq = 0       -- unique bosses killed across all 3 raids
@@ -833,7 +775,7 @@ local function GetTierStats(p, bundled, diff)
 
     -- Live per-boss kill flags (set on ENCOUNTER_END, e.g. "H_Voidspire_vanguard")
     -- are the source of truth for the LOCAL player -- they bump the instant you kill a
-    -- boss. The Archon scrape below only refreshes periodically, so a fresh kill won't
+    -- boss. The other sources below only refresh periodically, so a fresh kill won't
     -- show there for a while (that was the "still 6/9 after finally killing L'ura" bug).
     -- Count the flags and take the max, so your own progress is always current.
     local flagUniq = 0
@@ -982,7 +924,7 @@ local function AppendLinesForPlayer(tooltip, p, bundled)
         table.insert(lines, ("|cffa335ee  Raid Score:|r %d%s"):format(bundled.usr, sample_str))
     end
 
-    -- ===== LINE 4: Top keys + RIO/M+ score =====
+    -- ===== LINE 4: Top keys + M+ rating =====
     local topLine = {}
     if p.top_keys and p.top_keys[1] then
         local parts = {}
@@ -995,9 +937,9 @@ local function AppendLinesForPlayer(tooltip, p, bundled)
         table.insert(topLine, table.concat(bundled.tk, "  "))
     end
     if p.rio_score then
-        table.insert(topLine, ("|cff40ff80RIO %d|r"):format(math.floor(p.rio_score)))
+        table.insert(topLine, ("|cff40ff80M+ %d|r"):format(math.floor(p.rio_score)))
     elseif bundled and bundled.mp then
-        table.insert(topLine, ("|cff40ff80RIO %d|r"):format(bundled.mp))
+        table.insert(topLine, ("|cff40ff80M+ %d|r"):format(bundled.mp))
     end
     if #topLine > 0 then
         table.insert(lines, table.concat(topLine, "    "))
@@ -1119,11 +1061,11 @@ PlayerScan.InjectVoidScoutTooltip = InjectVoidScoutTooltip
 -- Public injector for non-unit contexts (LFG search entry, applicant member).
 -- Looks the player up by name+realm + falls back to bundled data for any
 -- player not in the local scan. Silent if neither has anything.
--- LFG callers pass live_rio = info.leaderOverallDungeonScore so we can
+-- LFG callers pass live_rating = info.leaderOverallDungeonScore so we can
 -- show the LIVE rating instead of our cached bundle value. Without the
 -- live override, leaders who climbed M+ since our last backfill would
 -- show stale numbers (e.g. bundle says 3020, live says 3108).
-function PlayerScan:AppendTooltipLines(tooltip, name, realm, live_rio)
+function PlayerScan:AppendTooltipLines(tooltip, name, realm, live_rating)
     if not tooltip or not name or name == "" then return false end
     if inCombat then return false end
     -- Strip "Name-Realm" if caller passed full name as `name`
@@ -1136,14 +1078,14 @@ function PlayerScan:AppendTooltipLines(tooltip, name, realm, live_rio)
     local norm = PlayerScan.Normalize(name, realm)
     if norm then bundled = self:GetBundled(norm.slug) end
     if not p and not bundled then return false end
-    -- If we have a live RIO from the LFG context, clone bundled and
+    -- If we have a live rating from the LFG context, clone bundled and
     -- override mp so the tooltip uses fresh data. Don't mutate the
     -- cached bundled table — other tooltips would see the override.
-    if live_rio and live_rio > 0 then
+    if live_rating and live_rating > 0 then
         local b2 = bundled and {} or nil
         if b2 then
             for k, v in pairs(bundled) do b2[k] = v end
-            b2.mp = live_rio
+            b2.mp = live_rating
             bundled = b2
         end
         -- The renderer prefers p.rio_score over bundled.mp, so override a
@@ -1151,7 +1093,7 @@ function PlayerScan:AppendTooltipLines(tooltip, name, realm, live_rio)
         if p then
             local p2 = {}
             for k, v in pairs(p) do p2[k] = v end
-            p2.rio_score, p2.rio_score_is_prev = live_rio, nil
+            p2.rio_score, p2.rio_score_is_prev = live_rating, nil
             p = p2
         end
     end
@@ -1165,11 +1107,8 @@ function PlayerScan:AppendTooltipLines(tooltip, name, realm, live_rio)
 end
 
 -- ============================================================
--- Tooltip scraper REMOVED (May 29 2026).
--- Used to read parse %, M+ score, best key from Archon/RIO tooltip text.
--- Removed for maximum legal cleanliness — we now source equivalent data
--- from sanctioned Blizzard API (server-side) + RIO public API (client).
--- Stub kept so PostCall registration in Init doesn't error.
+-- Tooltip scraper REMOVED (May 29 2026). Ratings and kills come from
+-- Blizzard's API. Stub kept so PostCall registration in Init doesn't error.
 -- ============================================================
 local function ScrapeTooltip(_) end
 
@@ -1180,7 +1119,7 @@ local function ScrapeTooltip(_) end
 -- counts for the player's own character — no achievement guessing.
 --
 -- For OTHER players, this requires them to be running VoidScout. Until
--- the server-side WCL fetch is wired, others fall back to mythic-only
+-- a server-side source is wired, others fall back to mythic-only
 -- achievement probe + meta-achievement inference.
 -- ============================================================
 -- Map ENCOUNTER_END encounterName → (raid, bossKey)
@@ -1467,7 +1406,7 @@ local function CaptureSelf()
     end
 
     Players()[guid] = p
-    pcall(EnrichPlayer, guid)   -- own RIO + Archon data (keeps the live rating for self)
+    pcall(EnrichPlayer, guid)   -- Blizzard's live rating + best keys for self
 end
 
 -- ============================================================
@@ -1480,7 +1419,6 @@ end
 --   CE_X   = killed end boss on Mythic → ≥1 mythic kill (often more)
 --   The_Voidspire = killed every Voidspire boss on some difficulty
 -- TODO: per-boss kill achievement IDs would give exact M counts.
--- TODO: server-side WCL scrape will overlay real parse data when ready.
 -- ============================================================
 local RAIDS = {
     { name = "Voidspire", bosses = 6 },
@@ -1545,7 +1483,7 @@ end
 
 -- ============================================================
 -- Bundle accessor — server-generated player data shipped IN THE ADDON
--- (same model as RaiderIO/Archon's bundled DB). VoidScoutBundle.lua is
+-- (a bundled database, no web requests). VoidScoutBundle.lua is
 -- generated by seeder/generate_bundle.py and pushed via CurseForge.
 --
 -- Lookups are by canonical slug ("name-realm-us"). Returns the compact
@@ -1630,59 +1568,22 @@ function PlayerScan:GetBadges(name, realm)
     return out
 end
 
--- Diagnostic dump: pull everything we can from RaiderIO + Archon for a player.
--- Prints to chat. Returns the data table too.
+-- Diagnostic dump: the cached M+ rating and best keys for a player. Prints to chat.
+-- Returns the record too. Raid progress: voidscout.io/character/...
 function PlayerScan:Probe(name, realm)
     name = name or UnitName("player")
     realm = (realm and realm ~= "") and realm or GetRealmName()
-    local out = { name = name, realm = realm }
     print(("|cff00c7ffVoidScout probe|r %s-%s"):format(name, realm))
-
-    -- RaiderIO — note: GetProfile is a regular function, NOT a method.
-    -- Call with (name, realm) — passing self produces "no profile" silently.
-    if _G.RaiderIO and _G.RaiderIO.GetProfile then
-        local ok, profile = pcall(_G.RaiderIO.GetProfile, name, realm)
-        if ok and profile then
-            out.rio = profile
-            local mp = profile.mythicKeystoneProfile
-            if mp then
-                print(("  RIO M+:   curr=%s  prev=%s  mainCurr=%s"):format(
-                    tostring(mp.currentScore or "-"),
-                    tostring(mp.previousScore or "-"),
-                    tostring(mp.mainCurrentScore or "-")))
-                if mp.sortedDungeons then
-                    for _, d in ipairs(mp.sortedDungeons) do
-                        if d.dungeon and (d.level or 0) > 0 then
-                            print(("    %s  +%d  %s"):format(
-                                d.dungeon.shortName or d.dungeon.name or "?",
-                                d.level or 0,
-                                d.chests and (d.chests .. "/3") or ""))
-                        end
-                    end
-                end
-            end
-            local rp = profile.raidProfile
-            if rp then
-                print("  RIO Raid: " .. (profile.raidProfile.summary or "<no summary>"))
-            end
-            local pp = profile.profile
-            if pp then
-                print(("  RIO Profile: %s-%s  class=%s  faction=%s"):format(
-                    pp.name or "?", pp.realm or "?",
-                    tostring(pp.class or "-"), tostring(pp.faction or "-")))
-            end
-        else
-            print("  RaiderIO: |cffff8080no profile for this player|r")
-        end
-    else
-        print("  RaiderIO: |cffff8080addon not loaded|r")
+    local p = self:GetByName(name, realm)
+    if not p then
+        print("  |cffff8080not seen yet|r")
+        return nil
     end
-
-    -- Archon section removed from probe (May 28 2026). Per-boss raid data
-    -- now sourced server-side from Blizzard's official API. Use the website
-    -- (voidscout.io/character/...) to see Blizzard-sourced raid_progress.
-
-    return out
+    print(("  M+ rating: %s"):format(tostring(p.rio_score or "-")))
+    for _, k in ipairs(p.top_keys or {}) do
+        print(("    +%d %s"):format(k.level or 0, k.dungeon or "?"))
+    end
+    return p
 end
 
 function PlayerScan:Stats()
@@ -1713,8 +1614,8 @@ function PlayerScan:Init()
     InitDB()
 
     -- Report bundle load status so the user can see at a glance that the
-    -- shipped data is in memory. Bundle ships in the addon (RIO/Archon
-    -- model) — no HTTP fetch, no SavedVar merge, just `require`-style load.
+    -- shipped data is in memory. Bundle ships in the addon: no HTTP fetch,
+    -- no SavedVar merge, just `require`-style load.
     if _G.VoidScoutBundle and _G.VoidScoutBundle.players then
         local n = 0
         for _ in pairs(_G.VoidScoutBundle.players) do n = n + 1 end
@@ -1789,9 +1690,6 @@ function PlayerScan:Init()
         end
     end)
 
-    -- Archon hook removed (May 28 2026) — see ArchonLookup stub. Per-boss
-    -- raid data now comes from server-side Blizzard API.
-
     -- Discover all boss-kill achievement IDs from the achievement DB.
     -- Runs once; result saved in VoidScoutDB.playerScan.boss_kill_ids.
     C_Timer.After(0.3, function()
@@ -1822,16 +1720,14 @@ function PlayerScan:Init()
     C_Timer.NewTicker(INSPECT_INTERVAL, ProcessInspectQueue)
 
     -- Background enrichment: one player per 2s. Refreshes stale records
-    -- and back-fills any captured before Archon DB was loaded.
+    -- and back-fills players captured before their data was available.
     C_Timer.NewTicker(2, TrickleEnrich)
 
     if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall then
         pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Unit, ScrapeTooltip)
         pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Unit, InjectVoidScoutTooltip)
-        -- Suppress RaiderIO's tooltip lines — we render equivalent data in
-        -- our VoidScout section. RIO addon stays ENABLED (we still call
-        -- :GetProfile() to read their bundled data); only the visual tooltip
-        -- output is hidden. Opt-out via VoidScoutDB.suppressRIOTooltip=false.
+        -- Hide other addons' duplicate rating / best-run lines: our VoidScout
+        -- section shows the same data. Opt-out via VoidScoutDB.suppressRIOTooltip=false.
         pcall(TooltipDataProcessor.AddTooltipPostCall, Enum.TooltipDataType.Unit, function(tooltip)
             if tooltip ~= GameTooltip then return end
             if VoidScoutDB and VoidScoutDB.suppressRIOTooltip == false then return end

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.37.21] — 2026-11-03
+
+### Changed
+- **M+ rating straight from Blizzard.** Tooltips and the group finder panel now show each player's M+ rating (labeled "M+") and best timed keys from Blizzard's own API, for you, your group and anyone you target or hover; everyone else shows the weekly bundled rating. VoidScout no longer reads rating data from other addons. Duplicate rating lines from other addons are still hidden.
+- Wording cleanup in the README and changelog.
+
 ## [0.37.20] — 2026-11-02
 
 ### Changed
@@ -106,7 +112,7 @@
 
 ### Changed
 - Removed all remaining third-party parse scraping and re-presentation. VoidScout no
-  longer reads or caches Archon/WarcraftLogs parse percentiles from tooltips, and raid
+  longer reads or caches other sites' parse percentiles from tooltips, and raid
   progress is now sourced purely from Blizzard's official API plus your own live kills —
   never another site's data. Any previously-cached scraped values are wiped on load.
 
