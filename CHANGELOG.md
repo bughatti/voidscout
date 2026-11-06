@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.37.22] — 2026-11-06
+
+### Changed
+- **Loads on WoW Forever.** Your Forever dungeon and raid fights are recorded like retail ones, and kept apart from retail: they never count toward retail scores. With the VoidScout uploader 0.4.7 they go up for future Forever pages on voidscout.io (only if you allow uploads in Forever's VoidScout).
+- On WoW Forever, VoidScout names you by your first name and surname, like every other player, so a "Delete + go local" request finds your Forever data.
+
 ## [0.37.21] — 2026-11-03
 
 ### Changed

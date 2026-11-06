@@ -102,6 +102,7 @@ WoW addons can't make web requests, so contributing your data uses a small separ
 ## Compatibility
 
 - **WoW 12.1.5** (Midnight Season 2)
+- **WoW Forever**: records your Forever dungeon and raid fights. They're kept apart from retail and never count toward retail scores.
 - Standalone — nothing else required
 
 ---

@@ -134,9 +134,15 @@ f:SetScript("OnEvent", function(_, event)
     -- Who is playing, in the same "Name-Realm" form as VoidScoutDB.scores keys.
     -- The uploader credits uploads to this character; without it, it guessed
     -- "whoever has the most fights", which is often a frequent groupmate.
+    -- WoW Forever is realmless: names are "First Surname" and the realm is a hidden shard
+    -- ("CAMWOW US1 Realm 8 PvP"). Fight rows key everyone as "First-Surname", so use the
+    -- surname here too, or the uploader's label and an opt-out can't find your rows.
     do
         local n = UnitName("player")
         local r = (GetRealmName and GetRealmName() or ""):gsub("%s+", "")
+        local full = GetUnitName and GetUnitName("player", false)
+        local surname = type(full) == "string" and full:match("^%S+%s+(.+)$")
+        if surname and surname ~= "" then r = surname:gsub("%s+", "") end
         if n and n ~= "" then
             VoidScoutDB.me = {
                 key    = r ~= "" and (n .. "-" .. r) or n,

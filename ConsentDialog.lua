@@ -266,6 +266,11 @@ local function BuildDialog()
         -- Resolve identity at request time.
         local name  = UnitName("player") or ""
         local realm = GetRealmName() or ""
+        -- WoW Forever: "First Surname" names, hidden-shard realm. Fight rows key you as
+        -- First-Surname, so the deletion request names the surname (see Core.lua's me.key).
+        local full = GetUnitName and GetUnitName("player", false)
+        local surname = type(full) == "string" and full:match("^%S+%s+(.+)$")
+        if surname and surname ~= "" then realm = surname end
         realm = realm:gsub("[^%w]", "")  -- match server slug rules
         local region = "us"
         if GetCurrentRegion then
