@@ -1,5 +1,7 @@
 # VoidScout
 
+**Works on:** WoW Midnight · WoW Forever (records your fights)
+
 **Behavior-aware player and group scoring for the Premade Groups finder.**
 
 Rating and item level tell you what a player *can* do on paper. VoidScout tells you what they actually *do*: kicks, dispels, dodging mechanics, staying for the whole key, pulling their weight. It docks a scouting panel beside the Premade Groups finder so you can build better groups before you invite — and coaches your own play along the way.
@@ -57,7 +59,7 @@ Every player seen in logged content is graded on eight plain-English axes, which
 
 ## Getting Started
 
-1. Install with the CurseForge app, or copy the `VoidScout` folder into `World of Warcraft/_retail_/Interface/AddOns/`.
+1. Install with the CurseForge app, or copy the `VoidScout` folder into `World of Warcraft/_retail_/Interface/AddOns/` (WoW Forever: `_forever_/Interface/AddOns/`).
 2. Restart WoW or `/reload`.
 3. On first login, choose your upload option in the consent dialog.
 4. Open **Group Finder → Premade Groups** — the VoidScout panel docks beside it.
@@ -101,7 +103,7 @@ WoW addons can't make web requests, so contributing your data uses a small separ
 
 ## Compatibility
 
-- **WoW 12.1.5** (Midnight Season 2)
+- **WoW Midnight** 12.1.5 (Season 2)
 - **WoW Forever**: records your Forever dungeon and raid fights. They're kept apart from retail and never count toward retail scores.
 - Standalone — nothing else required
 
