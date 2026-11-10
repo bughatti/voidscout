@@ -43,8 +43,11 @@ local inInstance = false
 -- Storage helpers (must be declared before any function that uses them
 -- since Lua locals don't hoist).
 -- ============================================================
+-- WoW Forever has no playerScan (never Init, wiped at login): an empty stand-in so /vs debug
+-- commands and FightRecorder's lookups read nothing instead of erroring (2026-11-09).
+local EMPTY = { players = {}, stats = {}, guilds = {} }
 local function DB()
-    return VoidScoutDB.playerScan
+    return (VoidScoutDB and VoidScoutDB.playerScan) or EMPTY
 end
 
 local function Players()
@@ -1478,7 +1481,9 @@ end
 
 function PlayerScan:GetByGUID(guid)
     if not guid then return nil end
-    return Players()[guid]
+    -- safe before / without Init (WoW Forever never runs it; FightRecorder still asks)
+    local db = VoidScoutDB and VoidScoutDB.playerScan
+    return db and db.players and db.players[guid] or nil
 end
 
 -- ============================================================

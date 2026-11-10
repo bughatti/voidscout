@@ -47,6 +47,262 @@ if not _G.__VoidBorderHook and hooksecurefunc and NineSliceUtil and NineSliceUti
 end
 _G.VoidHubLaunchers = _G.VoidHubLaunchers or {}
 
+----------------------------------------------------------------------
+-- Quick box: on/off switches any Void addon adds, next to the hub's icon ring
+-- (left-click the hub) or /vquick. The user, 2026-11-07: "a quick click box for any
+-- Void addon", e.g. the gathering HUD while questing, without digging through settings.
+--
+-- An addon adds a switch from its own code:
+--   VoidHubToggles = VoidHubToggles or {}
+--   table.insert(VoidHubToggles, { id = "VoidGather.hud", group = "Gathering",
+--       label = "Gathering HUD", tip = "...", get = function() return on end,
+--       set = function(on) ... end, noCombat = true (optional: waits for combat to end) })
+--
+-- This part runs in EVERY copy of the bundle, before the hub election below, and the
+-- newest QUICK_VERSION loaded builds the box. It hooks the hub button by name, so it
+-- works whichever copy (old or new) made the button: only addons that add switches
+-- need this version of the file.
+----------------------------------------------------------------------
+_G.VoidHubToggles = _G.VoidHubToggles or {}
+do
+    local QUICK_VERSION = 1
+    if (_G.__VoidQuickVersion or 0) < QUICK_VERSION then
+        _G.__VoidQuickVersion = QUICK_VERSION
+        local Q = {}
+        _G.VoidHubQuick = Q
+        local box, rows = nil, {}
+        local afterCombat = {}
+
+        local function entries()
+            local list, seen = {}, {}
+            for _, e in ipairs(_G.VoidHubToggles) do
+                if type(e) == "table" and e.label and e.get and e.set and not seen[e.id or e.label] then
+                    seen[e.id or e.label] = true
+                    list[#list + 1] = e
+                end
+            end
+            table.sort(list, function(a, b)
+                if (a.group or "") ~= (b.group or "") then return (a.group or "") < (b.group or "") end
+                return (a.order or 0) < (b.order or 0)
+            end)
+            return list
+        end
+
+        local function isOn(e)
+            local ok, v = pcall(e.get)
+            return ok and v and true or false
+        end
+
+        local function paint()
+            if not box then return end
+            local list = entries()
+            local lastGroup
+            for i, e in ipairs(list) do
+                local r = rows[i]
+                if not r then
+                    r = CreateFrame("Button", nil, box)
+                    r:SetHeight(20)
+                    r.group = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    r.group:SetPoint("LEFT", 8, 0)
+                    r.group:SetWidth(70)
+                    r.group:SetJustifyH("LEFT")
+                    r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    r.label:SetPoint("LEFT", 80, 0)
+                    r.label:SetJustifyH("LEFT")
+                    r.pill = r:CreateTexture(nil, "ARTWORK")
+                    r.pill:SetSize(34, 14)
+                    r.pill:SetPoint("RIGHT", -8, 0)
+                    r.state = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    r.state:SetPoint("CENTER", r.pill)
+                    r.hl = r:CreateTexture(nil, "BACKGROUND")
+                    r.hl:SetAllPoints()
+                    r.hl:SetColorTexture(0, 0.78, 1, 0.12)
+                    r.hl:Hide()
+                    r:SetScript("OnEnter", function(self)
+                        self.hl:Show()
+                        if self.e and self.e.tip then
+                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(self.e.label, 1, 1, 1)
+                            GameTooltip:AddLine(self.e.tip, 0.8, 0.8, 0.8, true)
+                            GameTooltip:Show()
+                        end
+                    end)
+                    r:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
+                    r:SetScript("OnClick", function(self)
+                        local e = self.e
+                        if not e then return end
+                        -- a click flips what's waiting for the fight to end, if anything is
+                        -- (Astra, 2026-11-07: a second click in combat repeated the change)
+                        local pending = afterCombat[e]
+                        local want
+                        if pending ~= nil then want = not pending else want = not isOn(e) end
+                        if e.noCombat and InCombatLockdown() then
+                            if want == isOn(e) then
+                                afterCombat[e] = nil
+                                print(("|cff00c7ffVoid|r %s: no change."):format(e.label))
+                            else
+                                afterCombat[e] = want
+                                print(("|cff00c7ffVoid|r %s: after this fight."):format(e.label))
+                            end
+                            paint()
+                            return
+                        end
+                        afterCombat[e] = nil
+                        local ok, err = pcall(e.set, want)
+                        if not ok then geterrorhandler()(err) end
+                        C_Timer.After(0.1, paint)
+                    end)
+                    rows[i] = r
+                end
+                r.e = e
+                r:ClearAllPoints()
+                r:SetPoint("TOPLEFT", 0, -24 - (i - 1) * 20)
+                r:SetPoint("RIGHT", box, "RIGHT")
+                r.group:SetText(e.group ~= lastGroup and (e.group or "") or "")
+                lastGroup = e.group
+                r.label:SetText(e.label)
+                local on = isOn(e)
+                if afterCombat[e] ~= nil then
+                    r.pill:SetColorTexture(0.5, 0.45, 0.1, 0.9)
+                    r.state:SetText("|cffffd200wait|r")
+                elseif on then
+                    r.pill:SetColorTexture(0.1, 0.55, 0.2, 0.95)
+                    r.state:SetText("ON")
+                else
+                    r.pill:SetColorTexture(0.25, 0.25, 0.28, 0.95)
+                    r.state:SetText("|cffaaaaaaOFF|r")
+                end
+                r:Show()
+            end
+            for i = #list + 1, #rows do rows[i]:Hide() end
+            box:SetHeight(30 + #list * 20)
+            return #list
+        end
+
+        local function build()
+            if box then return end
+            box = CreateFrame("Frame", "VoidHubQuickBox", UIParent, "BackdropTemplate")
+            box:SetSize(230, 60)
+            box:SetFrameStrata("HIGH")
+            box:SetClampedToScreen(true)
+            box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = VoidPX() })
+            box:SetBackdropColor(0.05, 0.05, 0.07, 0.95)
+            box:SetBackdropBorderColor(0, 0.78, 1, 0.7)
+            box:EnableMouse(true)
+            local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            title:SetPoint("TOPLEFT", 8, -6)
+            title:SetText("|cff00c7ffQuick switches|r")
+            box:Hide()
+            tinsert(UISpecialFrames, "VoidHubQuickBox")   -- Esc closes it
+            local acc = 0
+            box:SetScript("OnUpdate", function(_, dt)   -- states change elsewhere too
+                acc = acc + dt
+                if acc > 0.5 then acc = 0; paint() end
+            end)
+            box:SetScript("OnShow", function(self)
+                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+            end)
+            box:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+            box:SetScript("OnEvent", function(self)
+                -- a click anywhere else closes it (the hub button and its icons included:
+                -- clicking the hub again toggles both)
+                if self:IsMouseOver() then return end
+                local hub = _G.VoidHubMinimapBtn
+                if hub and hub:IsMouseOver() then return end
+                self:Hide()
+            end)
+            local ev = CreateFrame("Frame")
+            ev:RegisterEvent("PLAYER_REGEN_ENABLED")
+            ev:SetScript("OnEvent", function()
+                for e, want in pairs(afterCombat) do
+                    afterCombat[e] = nil
+                    local ok, err = pcall(e.set, want)
+                    if not ok then geterrorhandler()(err) end
+                end
+                if box:IsShown() then paint() end
+            end)
+        end
+
+        -- beside the hub's icon ring, on the side toward the middle of the screen
+        -- a frame's rect in UIParent units (the hub sits on the minimap, whose scale differs)
+        local function rect(f)
+            local l, b, w, h = f:GetRect()
+            if not l then return nil end
+            local s = f:GetEffectiveScale() / UIParent:GetEffectiveScale()
+            return l * s, b * s, w * s, h * s
+        end
+        local function place()
+            local hub = _G.VoidHubMinimapBtn
+            local l, b, w, h
+            if hub then l, b, w, h = rect(hub) end
+            if not l then box:ClearAllPoints(); box:SetPoint("CENTER"); return end
+            local x0, x1, y0, y1 = l, l + w, b, b + h
+            local pop = _G.VoidHubPopup
+            if pop and pop:IsShown() then
+                for _, c in ipairs({ pop:GetChildren() }) do
+                    if c:IsShown() then
+                        local cl, cb, cw, ch = rect(c)
+                        if cl then
+                            x0, x1 = math.min(x0, cl), math.max(x1, cl + cw)
+                            y0, y1 = math.min(y0, cb), math.max(y1, cb + ch)
+                        end
+                    end
+                end
+            end
+            box:ClearAllPoints()
+            if (l + w / 2) > UIParent:GetWidth() / 2 then
+                box:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", x0 - 6, y1)
+            else
+                box:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x1 + 6, y1)
+            end
+        end
+
+        function Q.Show()
+            build()
+            if (paint() or 0) == 0 then box:Hide(); return end
+            place()
+            box:Show()
+        end
+        function Q.Hide() if box then box:Hide() end end
+        function Q.Toggle() if box and box:IsShown() then Q.Hide() else Q.Show() end end
+
+        -- hook the hub button (made by whichever bundle copy won its election)
+        function Q.Install()
+            local hub = _G.VoidHubMinimapBtn
+            if not hub or Q.hooked then return hub ~= nil end
+            Q.hooked = true
+            hub:HookScript("OnClick", function(_, button)
+                if button ~= "LeftButton" then return end
+                local pop = _G.VoidHubPopup
+                if pop and pop:IsShown() then Q.Show() else Q.Hide() end
+            end)
+            hub:HookScript("OnEnter", function()
+                if #entries() > 0 and GameTooltip:IsOwned(hub) then
+                    GameTooltip:AddLine("Quick switches open with the icons", 0.5, 0.8, 0.5)
+                    GameTooltip:Show()
+                end
+            end)
+            return true
+        end
+
+        SLASH_VOIDQUICK1 = "/vquick"
+        SlashCmdList.VOIDQUICK = function() Q.Toggle() end
+    end
+    -- every new copy tries; the hub button appears ~0.5 s after login, so retry a while
+    local qf = CreateFrame("Frame")
+    qf:RegisterEvent("PLAYER_LOGIN")
+    qf:SetScript("OnEvent", function()
+        local tries = 0
+        local function try()
+            local Q = _G.VoidHubQuick
+            if not Q or Q.hooked then return end
+            tries = tries + 1
+            if not Q.Install() and tries < 20 then C_Timer.After(0.5, try) end
+        end
+        C_Timer.After(1, try)
+    end)
+end
+
 -- Election guard — only first-loaded Void* addon does the work
 if _G.__VoidHubLoaded then return end
 _G.__VoidHubLoaded = true
@@ -76,6 +332,7 @@ local KNOWN_VOID_ADDONS = {
     { name = "VoidGather",     label = "Gathering",         public = true, desc = "Every mining, herb, skinning and lumber spot on your map, shared with other players, plus what your gathering is worth per hour." },
     { name = "VoidGear",       label = "Gear Planner",      public = true, desc = "What the top Mythic+ players of your spec wear, your upgrades, and where your crests should go." },
     { name = "VoidGPS",        label = "GPS",               desc = "Type a place, an NPC, a service or a party member: a route along walked paths, flight paths and zeppelins, through zones." },
+    { name = "VoidLayer",      label = "Layers",            public = true, desc = "WoW Forever: see your layer, hop to another with one click, and rares up on other layers." },
     { name = "VoidLFG",        label = "Group Finder",      desc = "Enhanced LFG dialog with party history and quality filters." },
     { name = "VoidMap",        label = "World Map",         desc = "The world map in a Void window: same navigation, filters and pins, your quests beside it." },
     { name = "VoidPlates",     label = "Nameplates",        public = true, desc = "Clean, readable enemy nameplates: who is casting, what to kick and who it is aimed at." },

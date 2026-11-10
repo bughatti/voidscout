@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.37.24] — 2026-11-10
+
+### Changed (WoW Forever)
+- **Fights only on Forever:** the retail player database, player inspects and the M+ group-finder panel don't load or run there (about 23 MB less memory), and the old Forever player inspects are cleared.
+
 ## [0.37.23] — 2026-11-09
 
 - **Fixed: box borders missing a side.** Depending on where a window sat on screen, its left, right or bottom line could vanish. Borders are now exactly one screen pixel and can't round away.

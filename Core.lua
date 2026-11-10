@@ -164,11 +164,20 @@ f:SetScript("OnEvent", function(_, event)
         end
     end)
 
-    if VoidScout.PlayerScan and VoidScout.PlayerScan.Init then
+    -- WoW Forever: only the fight recorder runs. Player inspects, the M+ group-finder panel and
+    -- the key / trash / leader helpers are retail-only: on Forever they inspected 14k players
+    -- into a 23 MB save nobody uploads, and showed M+ ratings in Forever's group finder
+    -- (Forever audit, 2026-11-09).
+    local FOREVER = (select(4, GetBuildInfo()) or 0) < 100000
+    -- and the inspects already saved there go (the user, 2026-11-09: "yes wipe it"): 22.9 MB of
+    -- other players nothing uploads. Fights (VoidScoutDB.scores / fights) stay.
+    if FOREVER and VoidScoutDB then VoidScoutDB.playerScan = nil end
+
+    if not FOREVER and VoidScout.PlayerScan and VoidScout.PlayerScan.Init then
         VoidScout.PlayerScan:Init()
     end
 
-    if VoidScout.LFGPanel and VoidScout.LFGPanel.Init then
+    if not FOREVER and VoidScout.LFGPanel and VoidScout.LFGPanel.Init then
         VoidScout.LFGPanel:Init()
     end
 
@@ -180,16 +189,16 @@ f:SetScript("OnEvent", function(_, event)
         VoidScout.FightRecorder:Init()
     end
 
-    if VoidScout.LeaderProbabilityOverlay
+    if not FOREVER and VoidScout.LeaderProbabilityOverlay
        and VoidScout.LeaderProbabilityOverlay.Init then
         VoidScout.LeaderProbabilityOverlay:Init()
     end
 
-    if VoidScout.PreflightDetector and VoidScout.PreflightDetector.Init then
+    if not FOREVER and VoidScout.PreflightDetector and VoidScout.PreflightDetector.Init then
         VoidScout.PreflightDetector:Init()
     end
 
-    if VoidScout.TrashDiscovery and VoidScout.TrashDiscovery.Init then
+    if not FOREVER and VoidScout.TrashDiscovery and VoidScout.TrashDiscovery.Init then
         VoidScout.TrashDiscovery:Init()
     end
 

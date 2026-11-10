@@ -2,7 +2,7 @@
 ## Title: |cff00c7ffVoidScout|r
 ## Notes: Utility-aware applicant scoring for LFG premade groups
 ## Author: Vede
-## Version: 0.37.23
+## Version: 0.37.24
 ## SavedVariables: VoidScoutDB
 ## SavedVariablesPerCharacter: VoidScoutCharDB, VoidHubCharDB
 ## DefaultState: enabled
@@ -20,7 +20,7 @@ ConsentDialog.lua
 Core.lua
 MechanicConfigs.lua
 VoidScoutCache.lua
-VoidScoutBundle.lua
+VoidScoutBundle.lua [ExcludeLoadGameType camelot]
 TimerData.lua
 TimerScore.lua
 ScoreEngine.lua
