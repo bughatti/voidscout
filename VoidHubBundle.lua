@@ -48,164 +48,345 @@ end
 _G.VoidHubLaunchers = _G.VoidHubLaunchers or {}
 
 ----------------------------------------------------------------------
--- Quick box: on/off switches any Void addon adds, next to the hub's icon ring
--- (left-click the hub) or /vquick. The user, 2026-11-07: "a quick click box for any
--- Void addon", e.g. the gathering HUD while questing, without digging through settings.
+-- The drawer (2026-11-11): left-click the hub -> ONE panel, every Void addon by name, grouped
+-- by what it helps with, its on/off switches right under it. It replaces the ring of unnamed
+-- icons and the separate Quick switches box (the user: "the icon buttons around the map are
+-- getting confusing"). On WoW Forever the addons that do nothing there are left out.
 --
--- An addon adds a switch from its own code:
+-- An addon adds a switch from its own code (the id's first part names the addon):
 --   VoidHubToggles = VoidHubToggles or {}
 --   table.insert(VoidHubToggles, { id = "VoidGather.hud", group = "Gathering",
 --       label = "Gathering HUD", tip = "...", get = function() return on end,
 --       set = function(on) ... end, noCombat = true (optional: waits for combat to end) })
+-- and, without a minimap button of its own, a launcher:
+--   VoidHubLaunchers.VoidBars = { icon = "Interface\\Icons\\...", onClick = function(button) ... end }
 --
--- This part runs in EVERY copy of the bundle, before the hub election below, and the
--- newest QUICK_VERSION loaded builds the box. It hooks the hub button by name, so it
--- works whichever copy (old or new) made the button: only addons that add switches
--- need this version of the file.
+-- This part runs in EVERY copy of the bundle, before the hub election below, and the newest
+-- QUICK_VERSION loaded builds the drawer. It takes over the hub button's left click by name,
+-- so it works whichever copy (old or new) made the button.
 ----------------------------------------------------------------------
 _G.VoidHubToggles = _G.VoidHubToggles or {}
 do
-    local QUICK_VERSION = 1
+    -- 3: VoidSequencer, VoidPlates, VoidFrames and VoidCheatSheet listed on WoW Forever again (2 hid
+    -- them as Midnight-only; all four work there; the user, 2026-11-11: "seq is not in the new hud")
+    local QUICK_VERSION = 3
     if (_G.__VoidQuickVersion or 0) < QUICK_VERSION then
         _G.__VoidQuickVersion = QUICK_VERSION
         local Q = {}
         _G.VoidHubQuick = Q
-        local box, rows = nil, {}
+        local box
         local afterCombat = {}
+        local FOREVER = (select(4, GetBuildInfo()) or 0) < 100000
 
-        local function entries()
-            local list, seen = {}, {}
-            for _, e in ipairs(_G.VoidHubToggles) do
-                if type(e) == "table" and e.label and e.get and e.set and not seen[e.id or e.label] then
-                    seen[e.id or e.label] = true
-                    list[#list + 1] = e
-                end
-            end
-            table.sort(list, function(a, b)
-                if (a.group or "") ~= (b.group or "") then return (a.group or "") < (b.group or "") end
-                return (a.order or 0) < (b.order or 0)
-            end)
-            return list
-        end
+        -- name, label, group; noForever = does nothing on WoW Forever (Midnight content)
+        local GROUPS = { "Questing and travel", "Gear and gold", "Professions", "Combat", "PvP and groups", "Other" }
+        local ADDONS = {
+            { "VoidQuest", "Quests", 1 }, { "VoidGPS", "GPS", 1 }, { "VoidMap", "World map", 1 },
+            { "VoidLayer", "Layers", 1 }, { "VoidSweep", "Map radar", 1 },
+            { "VoidGear", "Gear", 2 }, { "VoidBags", "Bags", 2 }, { "VoidAH", "Auction House", 2 },
+            { "VoidProf", "Professions", 3 }, { "VoidGather", "Gathering", 3 }, { "VoidFisher", "Fishing", 3 },
+            { "VoidBars", "Action bars", 4 }, { "VoidTank", "Tank tools", 4 }, { "VoidAlert", "Alerts", 4 },
+            { "VoidSequencer", "Sequencer", 4 }, { "VoidPlates", "Nameplates", 4 },
+            { "VoidFrames", "Party frames", 4 }, { "VoidCheatSheet", "Cheat sheets", 4 },
+            { "VoidRaidTools", "Raid tools", 4, true }, { "VoidRaidToolsReader", "VRT reader", 4, true },
+            { "VoidDice", "Dice", 4 }, { "VoidComp", "Comp tool", 4 },
+            { "VoidBounty", "Bounties", 5 }, { "VoidScout", "Scout", 5 }, { "VoidPug", "Pug tracker", 5 },
+            { "VoidLFG", "Group finder", 5 }, { "VoidWatcher", "Watcher", 5 },
+            { "VoidCalendar", "Calendar", 6 }, { "VoidAsk", "Ask", 6 }, { "VoidUI", "UI", 6 },
+        }
 
         local function isOn(e)
             local ok, v = pcall(e.get)
             return ok and v and true or false
         end
 
-        local function paint()
-            if not box then return end
-            local list = entries()
-            local lastGroup
-            for i, e in ipairs(list) do
-                local r = rows[i]
-                if not r then
-                    r = CreateFrame("Button", nil, box)
-                    r:SetHeight(20)
-                    r.group = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                    r.group:SetPoint("LEFT", 8, 0)
-                    r.group:SetWidth(70)
-                    r.group:SetJustifyH("LEFT")
-                    r.label = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                    r.label:SetPoint("LEFT", 80, 0)
-                    r.label:SetJustifyH("LEFT")
-                    r.pill = r:CreateTexture(nil, "ARTWORK")
-                    r.pill:SetSize(34, 14)
-                    r.pill:SetPoint("RIGHT", -8, 0)
-                    r.state = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                    r.state:SetPoint("CENTER", r.pill)
-                    r.hl = r:CreateTexture(nil, "BACKGROUND")
-                    r.hl:SetAllPoints()
-                    r.hl:SetColorTexture(0, 0.78, 1, 0.12)
-                    r.hl:Hide()
-                    r:SetScript("OnEnter", function(self)
-                        self.hl:Show()
-                        if self.e and self.e.tip then
-                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                            GameTooltip:SetText(self.e.label, 1, 1, 1)
-                            GameTooltip:AddLine(self.e.tip, 0.8, 0.8, 0.8, true)
-                            GameTooltip:Show()
-                        end
-                    end)
-                    r:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
-                    r:SetScript("OnClick", function(self)
-                        local e = self.e
-                        if not e then return end
-                        -- a click flips what's waiting for the fight to end, if anything is
-                        -- (Astra, 2026-11-07: a second click in combat repeated the change)
-                        local pending = afterCombat[e]
-                        local want
-                        if pending ~= nil then want = not pending else want = not isOn(e) end
-                        if e.noCombat and InCombatLockdown() then
-                            if want == isOn(e) then
-                                afterCombat[e] = nil
-                                print(("|cff00c7ffVoid|r %s: no change."):format(e.label))
-                            else
-                                afterCombat[e] = want
-                                print(("|cff00c7ffVoid|r %s: after this fight."):format(e.label))
-                            end
-                            paint()
-                            return
-                        end
-                        afterCombat[e] = nil
-                        local ok, err = pcall(e.set, want)
-                        if not ok then geterrorhandler()(err) end
-                        C_Timer.After(0.1, paint)
-                    end)
-                    rows[i] = r
+        local function iconOf(name, launcher)
+            local btn = _G[name .. "MinimapBtn"]
+            if btn and btn.GetRegions then
+                for _, region in ipairs({ btn:GetRegions() }) do
+                    if region.GetTexture and region:GetObjectType() == "Texture" then
+                        local tex = region:GetTexture()
+                        if tex and not tostring(tex):find("Minimap%-Tracking") and not tostring(tex):find("Minimap%-Background") then return tex end
+                    end
                 end
-                r.e = e
-                r:ClearAllPoints()
-                r:SetPoint("TOPLEFT", 0, -24 - (i - 1) * 20)
-                r:SetPoint("RIGHT", box, "RIGHT")
-                r.group:SetText(e.group ~= lastGroup and (e.group or "") or "")
-                lastGroup = e.group
-                r.label:SetText(e.label)
-                local on = isOn(e)
-                if afterCombat[e] ~= nil then
-                    r.pill:SetColorTexture(0.5, 0.45, 0.1, 0.9)
-                    r.state:SetText("|cffffd200wait|r")
-                elseif on then
-                    r.pill:SetColorTexture(0.1, 0.55, 0.2, 0.95)
-                    r.state:SetText("ON")
-                else
-                    r.pill:SetColorTexture(0.25, 0.25, 0.28, 0.95)
-                    r.state:SetText("|cffaaaaaaOFF|r")
-                end
-                r:Show()
             end
-            for i = #list + 1, #rows do rows[i]:Hide() end
-            box:SetHeight(30 + #list * 20)
-            return #list
+            return launcher and launcher.icon or "Interface\\Icons\\spell_shadow_summonvoidwalker"
+        end
+
+        local function opener(name)
+            local btn = _G[name .. "MinimapBtn"]
+            if btn and btn.GetScript and btn:GetScript("OnClick") then
+                return function(button) btn:GetScript("OnClick")(btn, button) end
+            end
+            local l = _G.VoidHubLaunchers and _G.VoidHubLaunchers[name]
+            if type(l) == "table" and l.onClick then return function(button) l.onClick(button) end, l end
+        end
+
+        -- what the drawer shows: groups -> addons (loaded ones) -> their switches
+        local function model()
+            local toggles, seen = {}, {}
+            for _, e in ipairs(_G.VoidHubToggles) do
+                if type(e) == "table" and e.label and e.get and e.set and not seen[e.id or e.label] then
+                    seen[e.id or e.label] = true
+                    local owner = type(e.id) == "string" and e.id:match("^([%w]+)%.") or "?"
+                    toggles[owner] = toggles[owner] or {}
+                    table.insert(toggles[owner], e)
+                end
+            end
+            for _, list in pairs(toggles) do table.sort(list, function(a, b) return (a.order or 0) < (b.order or 0) end) end
+            local groups, known = {}, {}
+            for gi = 1, #GROUPS do groups[gi] = { name = GROUPS[gi], addons = {} } end
+            for _, a in ipairs(ADDONS) do
+                local name = a[1]
+                known[name] = true
+                local open, launcher = opener(name)
+                local sw = toggles[name]
+                if (open or sw) and not (FOREVER and a[4]) then
+                    table.insert(groups[a[3]].addons, { name = name, label = a[2], open = open, icon = iconOf(name, launcher), toggles = sw or {} })
+                end
+            end
+            for owner, list in pairs(toggles) do   -- switches of an addon this list doesn't know
+                if not known[owner] then
+                    table.insert(groups[#GROUPS].addons, { name = owner, label = owner:gsub("^Void", ""), icon = iconOf(owner), toggles = list })
+                end
+            end
+            local out = {}
+            for _, g in ipairs(groups) do if #g.addons > 0 then out[#out + 1] = g end end
+            return out
+        end
+
+        ------------------------------------------------------------------
+        -- rows (reused): kind = "group" | "addon" | "toggle"
+        ------------------------------------------------------------------
+        local rows, COL_W, ROW_H = {}, 230, { group = 20, addon = 22, toggle = 18 }
+
+        local function flip(e)
+            local pending = afterCombat[e]
+            local want
+            if pending ~= nil then want = not pending else want = not isOn(e) end
+            if e.noCombat and InCombatLockdown() then
+                -- a click flips what's waiting for the fight to end (Astra, 2026-11-07)
+                if want == isOn(e) then
+                    afterCombat[e] = nil
+                    print(("|cff00c7ffVoid|r %s: no change."):format(e.label))
+                else
+                    afterCombat[e] = want
+                    print(("|cff00c7ffVoid|r %s: after this fight."):format(e.label))
+                end
+                return
+            end
+            afterCombat[e] = nil
+            local ok, err = pcall(e.set, want)
+            if not ok then geterrorhandler()(err) end
+        end
+
+        local function row(i)
+            local r = rows[i]
+            if r then return r end
+            r = CreateFrame("Button", nil, box)
+            r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            r.icon = r:CreateTexture(nil, "ARTWORK")
+            r.icon:SetSize(16, 16)
+            r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            r.text:SetJustifyH("LEFT")
+            r.text:SetWordWrap(false)
+            r.pill = r:CreateTexture(nil, "ARTWORK")
+            r.pill:SetSize(30, 13)
+            r.pill:SetPoint("RIGHT", -6, 0)
+            r.state = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            r.state:SetPoint("CENTER", r.pill)
+            r.line = r:CreateTexture(nil, "ARTWORK")
+            r.line:SetHeight(1)
+            r.line:SetPoint("BOTTOMLEFT", 6, 1)
+            r.line:SetPoint("BOTTOMRIGHT", -6, 1)
+            r.line:SetColorTexture(0, 0.78, 1, 0.25)
+            r.hl = r:CreateTexture(nil, "BACKGROUND")
+            r.hl:SetAllPoints()
+            r.hl:SetColorTexture(0, 0.78, 1, 0.12)
+            r.hl:Hide()
+            r:SetScript("OnEnter", function(self)
+                if self.kind == "group" then return end
+                self.hl:Show()
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if self.kind == "addon" then
+                    GameTooltip:SetText("|cff00c7ff" .. self.a.name .. "|r")
+                    GameTooltip:AddLine(self.a.open and "Click to open" or "No window: its switches are below", 1, 1, 1)
+                else
+                    GameTooltip:SetText(self.e.label, 1, 1, 1)
+                    if self.e.tip then GameTooltip:AddLine(self.e.tip, 0.8, 0.8, 0.8, true) end
+                end
+                GameTooltip:Show()
+            end)
+            r:SetScript("OnLeave", function(self) self.hl:Hide(); GameTooltip:Hide() end)
+            r:SetScript("OnClick", function(self, button)
+                if self.kind == "addon" and self.a.open then
+                    box:Hide()
+                    local ok, err = pcall(self.a.open, button)
+                    if not ok then geterrorhandler()(err) end
+                elseif self.kind == "toggle" then
+                    flip(self.e)
+                    C_Timer.After(0.1, Q.Paint)
+                end
+            end)
+            rows[i] = r
+            return r
+        end
+
+        local function paintState(r)
+            local e = r.e
+            if afterCombat[e] ~= nil then
+                r.pill:SetColorTexture(0.5, 0.45, 0.1, 0.9); r.state:SetText("|cffffd200wait|r")
+            elseif isOn(e) then
+                r.pill:SetColorTexture(0.1, 0.55, 0.2, 0.95); r.state:SetText("ON")
+            else
+                r.pill:SetColorTexture(0.25, 0.25, 0.28, 0.95); r.state:SetText("|cffaaaaaaOFF|r")
+            end
+        end
+
+        -- lay the groups out in one or two columns (split at a group boundary near the middle)
+        function Q.Paint()
+            if not box then return 0 end
+            local groups = model()
+            local items = {}
+            for _, g in ipairs(groups) do
+                local block = { { kind = "group", g = g } }
+                for _, a in ipairs(g.addons) do
+                    block[#block + 1] = { kind = "addon", a = a }
+                    for _, e in ipairs(a.toggles) do block[#block + 1] = { kind = "toggle", e = e } end
+                end
+                items[#items + 1] = block
+            end
+            local total = 0
+            for _, b in ipairs(items) do for _, it in ipairs(b) do total = total + ROW_H[it.kind] end end
+            local cols = total > 300 and 2 or 1
+            local col, y, colH, maxH, n = 0, 0, {}, 0, 0
+            for bi, b in ipairs(items) do
+                local bh = 0
+                for _, it in ipairs(b) do bh = bh + ROW_H[it.kind] end
+                if cols == 2 and col == 0 and bi > 1 and y + bh / 2 > total / 2 then col, y = 1, 0 end
+                for _, it in ipairs(b) do
+                    n = n + 1
+                    local r = row(n)
+                    r.kind, r.a, r.e = it.kind, it.a, it.e
+                    local h = ROW_H[it.kind]
+                    r:SetSize(COL_W, h)
+                    r:ClearAllPoints()
+                    r:SetPoint("TOPLEFT", 4 + col * (COL_W + 8), -28 - y)
+                    r.icon:Hide(); r.pill:Hide(); r.state:Hide(); r.line:Hide()
+                    r.text:ClearAllPoints()
+                    if it.kind == "group" then
+                        r.text:SetFontObject("GameFontNormalSmall")
+                        r.text:SetPoint("LEFT", 6, -2)
+                        r.text:SetText(it.g.name)
+                        r.line:Show()
+                    elseif it.kind == "addon" then
+                        r.icon:Show(); r.icon:SetPoint("LEFT", 8, 0); r.icon:SetTexture(it.a.icon)
+                        r.text:SetFontObject("GameFontHighlight")
+                        r.text:SetPoint("LEFT", r.icon, "RIGHT", 6, 0)
+                        r.text:SetPoint("RIGHT", -6, 0)
+                        r.text:SetText(it.a.open and it.a.label or ("|cffa0a0a8" .. it.a.label .. "|r"))
+                    else
+                        r.text:SetFontObject("GameFontHighlightSmall")
+                        r.text:SetPoint("LEFT", 32, 0)
+                        r.text:SetPoint("RIGHT", r.pill, "LEFT", -4, 0)
+                        r.text:SetText("|cffc8c8d0" .. it.e.label .. "|r")
+                        r.pill:Show(); r.state:Show()
+                        paintState(r)
+                    end
+                    r:Show()
+                    y = y + h
+                end
+                colH[col] = y
+                maxH = math.max(maxH, y)
+            end
+            for i = n + 1, #rows do rows[i]:Hide() end
+            box:SetSize(8 + cols * COL_W + (cols - 1) * 8, 36 + maxH + 26)   -- 26: the background slider
+            return n
+        end
+
+        -- background opacity (the user, 11-11: "a transparency setting to the hub"): only the
+        -- panel's background and border fade, the names and switches stay solid. Per character.
+        local function alpha()
+            VoidHubCharDB = VoidHubCharDB or {}
+            local a = tonumber(VoidHubCharDB.drawerAlpha) or 0.96
+            return math.max(0.1, math.min(1, a))
+        end
+        local function applyAlpha()
+            if not box then return end
+            local a = alpha()
+            box:SetBackdropColor(0.05, 0.05, 0.07, a)
+            box:SetBackdropBorderColor(0, 0.78, 1, 0.3 + 0.5 * a)
+            if box.pct then box.pct:SetText(("%d%%"):format(math.floor(a * 100 + 0.5))) end
         end
 
         local function build()
             if box then return end
-            box = CreateFrame("Frame", "VoidHubQuickBox", UIParent, "BackdropTemplate")
-            box:SetSize(230, 60)
+            box = CreateFrame("Frame", "VoidHubDrawer", UIParent, "BackdropTemplate")
+            box:SetSize(240, 60)
             box:SetFrameStrata("HIGH")
             box:SetClampedToScreen(true)
             box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = VoidPX() })
-            box:SetBackdropColor(0.05, 0.05, 0.07, 0.95)
+            box:SetBackdropColor(0.05, 0.05, 0.07, 0.96)
             box:SetBackdropBorderColor(0, 0.78, 1, 0.7)
             box:EnableMouse(true)
             local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            title:SetPoint("TOPLEFT", 8, -6)
-            title:SetText("|cff00c7ffQuick switches|r")
+            title:SetPoint("TOPLEFT", 10, -8)
+            title:SetText("|cff00c7ffVoid addons|r")
+            local hint = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            hint:SetPoint("TOPRIGHT", -10, -9)
+            hint:SetText("click a name to open")   -- short: a one-column drawer is only 240 wide
+            -- the background slider, along the bottom
+            local lbl = box:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            lbl:SetPoint("BOTTOMLEFT", 12, 9)
+            lbl:SetText("Background")
+            local s = CreateFrame("Slider", nil, box)
+            s:SetOrientation("HORIZONTAL")
+            s:SetSize(110, 14)   -- label + slider + % fit a one-column (238 px) drawer
+            s:SetPoint("LEFT", lbl, "RIGHT", 10, 0)
+            s:SetMinMaxValues(0.1, 1)
+            s:SetValueStep(0.05)
+            if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+            local track = s:CreateTexture(nil, "BACKGROUND")
+            track:SetColorTexture(1, 1, 1, 0.18)
+            track:SetHeight(3)
+            track:SetPoint("LEFT"); track:SetPoint("RIGHT")
+            s:SetThumbTexture("Interface\\Buttons\\WHITE8X8")
+            local th = s:GetThumbTexture()
+            th:SetSize(8, 14)
+            th:SetVertexColor(0, 0.78, 1)
+            box.pct = box:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            box.pct:SetPoint("LEFT", s, "RIGHT", 8, 0)
+            s:SetValue(alpha())
+            s:SetScript("OnValueChanged", function(_, v)
+                VoidHubCharDB = VoidHubCharDB or {}
+                VoidHubCharDB.drawerAlpha = math.floor(v * 20 + 0.5) / 20
+                applyAlpha()
+            end)
+            s:EnableMouseWheel(true)
+            s:SetScript("OnMouseWheel", function(self, d) self:SetValue(math.max(0.1, math.min(1, self:GetValue() + d * 0.05))) end)
+            s:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText("Background", 1, 1, 1)
+                GameTooltip:AddLine("How see-through this panel is. Drag or use the mouse wheel. The names and switches stay solid.", 0.8, 0.8, 0.8, true)
+                GameTooltip:Show()
+            end)
+            s:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            applyAlpha()
             box:Hide()
-            tinsert(UISpecialFrames, "VoidHubQuickBox")   -- Esc closes it
+            tinsert(UISpecialFrames, "VoidHubDrawer")   -- Esc closes it
             local acc = 0
-            box:SetScript("OnUpdate", function(_, dt)   -- states change elsewhere too
+            box:SetScript("OnUpdate", function(_, dt)   -- switches change elsewhere too
                 acc = acc + dt
-                if acc > 0.5 then acc = 0; paint() end
+                if acc > 0.5 then
+                    acc = 0
+                    for _, r in ipairs(rows) do if r:IsShown() and r.kind == "toggle" then paintState(r) end end
+                end
             end)
-            box:SetScript("OnShow", function(self)
-                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-            end)
+            box:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
             box:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
             box:SetScript("OnEvent", function(self)
-                -- a click anywhere else closes it (the hub button and its icons included:
-                -- clicking the hub again toggles both)
+                -- a click anywhere else closes it (the hub button toggles it itself)
                 if self:IsMouseOver() then return end
                 local hub = _G.VoidHubMinimapBtn
                 if hub and hub:IsMouseOver() then return end
@@ -219,12 +400,11 @@ do
                     local ok, err = pcall(e.set, want)
                     if not ok then geterrorhandler()(err) end
                 end
-                if box:IsShown() then paint() end
+                if box:IsShown() then Q.Paint() end
             end)
         end
 
-        -- beside the hub's icon ring, on the side toward the middle of the screen
-        -- a frame's rect in UIParent units (the hub sits on the minimap, whose scale differs)
+        -- beside the hub, on the side toward the middle of the screen
         local function rect(f)
             local l, b, w, h = f:GetRect()
             if not l then return nil end
@@ -235,53 +415,50 @@ do
             local hub = _G.VoidHubMinimapBtn
             local l, b, w, h
             if hub then l, b, w, h = rect(hub) end
-            if not l then box:ClearAllPoints(); box:SetPoint("CENTER"); return end
-            local x0, x1, y0, y1 = l, l + w, b, b + h
-            local pop = _G.VoidHubPopup
-            if pop and pop:IsShown() then
-                for _, c in ipairs({ pop:GetChildren() }) do
-                    if c:IsShown() then
-                        local cl, cb, cw, ch = rect(c)
-                        if cl then
-                            x0, x1 = math.min(x0, cl), math.max(x1, cl + cw)
-                            y0, y1 = math.min(y0, cb), math.max(y1, cb + ch)
-                        end
-                    end
-                end
-            end
             box:ClearAllPoints()
-            if (l + w / 2) > UIParent:GetWidth() / 2 then
-                box:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", x0 - 6, y1)
-            else
-                box:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", x1 + 6, y1)
-            end
+            if not l then box:SetPoint("CENTER"); return end
+            local right = (l + w / 2) > UIParent:GetWidth() / 2
+            local top = (b + h / 2) > UIParent:GetHeight() / 2
+            local px = right and (l - 6) or (l + w + 6)
+            local py = top and (b + h) or b
+            box:SetPoint((top and "TOP" or "BOTTOM") .. (right and "RIGHT" or "LEFT"), UIParent, "BOTTOMLEFT", px, py)
         end
 
         function Q.Show()
             build()
-            if (paint() or 0) == 0 then box:Hide(); return end
+            if (Q.Paint() or 0) == 0 then box:Hide(); return end
             place()
             box:Show()
         end
         function Q.Hide() if box then box:Hide() end end
         function Q.Toggle() if box and box:IsShown() then Q.Hide() else Q.Show() end end
 
-        -- hook the hub button (made by whichever bundle copy won its election)
+        -- take over the hub button's left click (made by whichever bundle copy won its election)
         function Q.Install()
             local hub = _G.VoidHubMinimapBtn
             if not hub or Q.hooked then return hub ~= nil end
             Q.hooked = true
-            hub:HookScript("OnClick", function(_, button)
-                if button ~= "LeftButton" then return end
-                local pop = _G.VoidHubPopup
-                if pop and pop:IsShown() then Q.Show() else Q.Hide() end
+            local orig = hub:GetScript("OnClick")
+            hub:SetScript("OnClick", function(self, button)
+                if button == "LeftButton" then
+                    if _G.VoidHubPopup then _G.VoidHubPopup:Hide() end   -- the old icon ring, never again
+                    Q.Toggle()
+                elseif orig then
+                    orig(self, button)
+                end
             end)
             hub:HookScript("OnEnter", function()
-                if #entries() > 0 and GameTooltip:IsOwned(hub) then
-                    GameTooltip:AddLine("Quick switches open with the icons", 0.5, 0.8, 0.5)
+                if GameTooltip:IsOwned(hub) then
+                    GameTooltip:AddLine("Left-click: every Void addon by name, with its switches", 0.5, 0.8, 0.5)
                     GameTooltip:Show()
                 end
             end)
+            -- a cyan ring: ours at a glance, not BugSack's or Blizzard's round buttons
+            for _, region in ipairs({ hub:GetRegions() }) do
+                if region.GetWidth and (region:GetWidth() or 0) > 40 then
+                    region:SetVertexColor(0.35, 0.85, 1)
+                end
+            end
             return true
         end
 
@@ -303,6 +480,7 @@ do
     end)
 end
 
+
 -- Election guard — only first-loaded Void* addon does the work
 if _G.__VoidHubLoaded then return end
 _G.__VoidHubLoaded = true
@@ -323,7 +501,8 @@ local KNOWN_VOID_ADDONS = {
     { name = "VoidAlert",      label = "Alerts",            desc = "Custom on-screen alerts for combat events." },
     { name = "VoidBags",       label = "Bags",              public = true, desc = "Smart bag organizer with auto-categorization, cross-character tracking, and one-click merchant tools." },
     { name = "VoidBars",       label = "Action Bars",       public = true, desc = "Action bars with smart Consumables, Travel and Professions bars, profiles and layout presets." },
-    { name = "VoidCalendar",   label = "Calendar",          public = true, desc = "A Void-themed calendar replacement that shows every event in your own time zone." },
+    { name = "VoidBounty",     label = "Bounties",          desc = "WoW Forever world PvP: enemy players nearby, the players who killed you, and writs paid in vendor goods." },
+    { name = "VoidCalendar",   label = "Calendar",         public = true, desc = "A Void-themed calendar replacement that shows every event in your own time zone." },
     { name = "VoidCheatSheet", label = "Cheat Sheets",      public = true, desc = "In-game cheat sheets for every Midnight raid, the full Mythic+ pool, and delve bosses, auto-pops on pull." },
     { name = "VoidComp",       label = "Comp Tool",         desc = "Group composition planning and balance helper." },
     { name = "VoidDice",       label = "Dice Roller",       desc = "Standardized loot-roll rolls for raids." },
@@ -569,10 +748,26 @@ local function BuildInfoFrame()
     infoFrame:SetBackdropBorderColor(CYAN_R, CYAN_G, CYAN_B, 0.85)
     infoFrame:Hide()
     infoFrame:SetMovable(true)
+    infoFrame:SetClampedToScreen(true)
     infoFrame:EnableMouse(true)
     infoFrame:RegisterForDrag("LeftButton")
     infoFrame:SetScript("OnDragStart", infoFrame.StartMoving)
-    infoFrame:SetScript("OnDragStop", infoFrame.StopMovingOrSizing)
+    -- kept after a restart (the user, 2026-11-12: every box stays where it was moved). Inline, not
+    -- VoidMove.lua: whichever addon's bundle copy runs, it may not carry that file.
+    infoFrame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        if self.SetUserPlaced then self:SetUserPlaced(false) end
+        local p, _, rp, x, y = self:GetPoint(1)
+        VoidHubCharDB = VoidHubCharDB or {}
+        if p then VoidHubCharDB.infoPos = { p, rp, math.floor(x + 0.5), math.floor(y + 0.5) } end
+    end)
+    infoFrame:SetScript("OnShow", function(self)
+        local p = VoidHubCharDB and VoidHubCharDB.infoPos
+        if type(p) == "table" and type(p[1]) == "string" then
+            self:ClearAllPoints()
+            self:SetPoint(p[1], UIParent, p[2] or p[1], tonumber(p[3]) or 0, tonumber(p[4]) or 0)
+        end
+    end)
     table.insert(UISpecialFrames, "VoidHubInfo")
 
     -- Title

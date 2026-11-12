@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.37.25] — 2026-11-12
+
+- **The permission boxes and the trash discovery window can be dragged** and stay where you put them, even after a restart.
+- **Void hub button:** left-click opens one panel with all your Void addons by name, grouped, each with its own on/off switches (it replaces the ring of icons), with a background slider. The hub's info window now stays where you put it.
+
 ## [0.37.24] — 2026-11-10
 
 ### Changed (WoW Forever)

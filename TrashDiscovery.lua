@@ -17,6 +17,7 @@
 -- Trash casts aren't in DBC. Observed-cast discovery is the only path.
 ----------------------------------------------------------------------
 
+local _, ns = ...   -- ns.Move (VoidMove.lua)
 VoidScout = VoidScout or {}
 local mod = {}
 VoidScout.TrashDiscovery = mod
@@ -382,6 +383,7 @@ local function build_popup()
     popup:RegisterForDrag("LeftButton")
     popup:SetScript("OnDragStart", popup.StartMoving)
     popup:SetScript("OnDragStop", popup.StopMovingOrSizing)
+    ns.Move(popup, { db = function() return VoidScoutDB end, key = "priority" })   -- drag + kept after a restart (VoidMove.lua)
     popup.TitleText:SetText("VoidScout — Priority Interrupt Candidates")
 
     local hint = popup:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

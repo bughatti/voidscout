@@ -1,4 +1,4 @@
-# VoidScout
+# VoidScout - Mythic+ Player Score & Group Finder
 
 **Works on:** WoW Midnight · WoW Forever (records your fights)
 
@@ -109,4 +109,4 @@ WoW addons can't make web requests, so contributing your data uses a small separ
 
 ---
 
-*Part of the Void addon family by Vede · MIT licensed · [Source & bug reports](https://github.com/bughatti/voidscout) · [All Void addons](https://www.curseforge.com/members/bughatti/projects) · free M+ & raid player lookups at [voidscout.io](https://voidscout.io) · more at [tinkerline.io](https://tinkerline.io) · [Discord](https://discord.gg/7ZHmx7zMDh)*
+*Part of the Void addon family by Vede · MIT licensed · [Source & bug reports](https://github.com/bughatti/voidscout) · [All Void addons](https://www.curseforge.com/members/bughatti/projects) · free M+ & raid player lookups at [voidscout.io](https://voidscout.io) · more at [tinkerline.io](https://tinkerline.io/addons/voidscout/) · [Discord](https://discord.gg/7ZHmx7zMDh)*

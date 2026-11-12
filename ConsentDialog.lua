@@ -40,6 +40,7 @@
 -- typed-slash-first UX (see feedback-no-typed-slash-commands memory).
 ----------------------------------------------------------------------
 
+local _, ns = ...   -- ns.Move (VoidMove.lua)
 local CONSENT_VERSION = 3  -- version stamped on NEW choices (current dialog text)
 -- Re-prompt ONLY when the stored choice predates a genuinely new DATA CATEGORY --
 -- never on every version change. Exact-version matching was fragile: it re-nagged
@@ -113,6 +114,7 @@ local function BuildSimDialog()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    ns.Move(f, { db = function() return VoidScoutDB end, key = "simDialog" })   -- drag + kept after a restart (VoidMove.lua)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -16)
@@ -179,6 +181,7 @@ local function BuildDialog()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    ns.Move(f, { db = function() return VoidScoutDB end, key = "consent" })   -- drag + kept after a restart (VoidMove.lua)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -16)
