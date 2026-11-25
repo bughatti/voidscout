@@ -50,6 +50,13 @@ local function CreateMinimapButton()
             end
             return
         end
+        -- WoW Forever: there's no retail Group Finder to attach to; left-click is your
+        -- Forever score card (ForeverCard.lua). (2026-11-18, the user: "it also has a
+        -- popup for me to see my scores")
+        if VoidScout.ForeverCard then
+            VoidScout.ForeverCard:ToggleMine()
+            return
+        end
         -- Left-click: open Blizzard's Group Finder window (where the
         -- VoidScout LFG side panel attaches). If it's already open,
         -- toggle the floating VoidScoutMyPanel summary card.
@@ -96,7 +103,7 @@ local function CreateMinimapButton()
             end
             GameTooltip:AddLine(" ", 1, 1, 1)
         end
-        GameTooltip:AddLine("Left-click: open scoring panel", 0.85, 0.85, 0.85)
+        GameTooltip:AddLine(VoidScout.ForeverCard and "Left-click: your score card" or "Left-click: open scoring panel", 0.85, 0.85, 0.85)
         GameTooltip:AddLine("Right-click: uploads, damage sim, opt-out", 0.85, 0.85, 0.85)
         GameTooltip:AddLine("Drag: reposition around minimap", 0.7, 0.7, 0.7)
         GameTooltip:Show()

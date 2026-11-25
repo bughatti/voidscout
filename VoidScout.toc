@@ -2,7 +2,7 @@
 ## Title: |cff00c7ffVoidScout|r
 ## Notes: Utility-aware applicant scoring for LFG premade groups
 ## Author: Vede
-## Version: 0.37.26
+## Version: 0.37.27
 ## SavedVariables: VoidScoutDB
 ## SavedVariablesPerCharacter: VoidScoutCharDB, VoidHubCharDB
 ## DefaultState: enabled
@@ -34,6 +34,10 @@ PreflightDetector.lua
 TrashDiscovery.lua
 LFGFieldScanner.lua
 S2Probe.lua
+
+# WoW Forever: item levels + the Forever score card (retail's card counts only retail bosses).
+ForeverGear.lua [AllowLoadGameType camelot]
+ForeverCard.lua [AllowLoadGameType camelot]
 
 # Minimap button + shared VoidHub icon cluster.
 Minimap.lua

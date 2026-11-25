@@ -828,6 +828,8 @@ local function OnEncounterEnd(encounterID, encounterName, difficultyID, groupSiz
                     if axes.raw.damage_done then
                         axes.raw.active_dps = axes.raw.damage_done / active
                     end
+                    -- Forever: the item level ForeverGear measured for this player (nil on retail)
+                    if VoidScout.ForeverGear and axes.raw then axes.raw.ilvl = VoidScout.ForeverGear.Get(name) end
                     local rec = VoidScoutDB.scores[name] or { fights = {} }
                     table.insert(rec.fights, {
                         encounter_id   = card.encounterID,
@@ -1522,6 +1524,8 @@ local function OnChallengeCompleted()
                     if axes.raw.damage_done then
                         axes.raw.active_dps = axes.raw.damage_done / active
                     end
+                    -- Forever: the item level ForeverGear measured for this player (nil on retail)
+                    if VoidScout.ForeverGear and axes.raw then axes.raw.ilvl = VoidScout.ForeverGear.Get(name) end
                     local rec = VoidScoutDB.scores[name] or { fights = {} }
                     table.insert(rec.fights, {
                         encounter_id   = card.encounterID,

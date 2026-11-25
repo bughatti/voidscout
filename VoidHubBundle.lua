@@ -85,7 +85,10 @@ _G.VoidHubToggles = _G.VoidHubToggles or {}
 do
     -- 3: VoidSequencer, VoidPlates, VoidFrames and VoidCheatSheet listed on WoW Forever again (2 hid
     -- them as Midnight-only; all four work there; the user, 2026-11-11: "seq is not in the new hud")
-    local QUICK_VERSION = 3
+    -- 4: VoidDungeon listed (dungeon guide + marking board; it had no hub entry, the user 2026-11-14)
+    -- 5: VoidCheatSheet is retail only (its WoW Forever sheets are in VoidDungeon, 2026-11-15): left
+    --    out on WoW Forever again
+    local QUICK_VERSION = 6
     if (_G.__VoidQuickVersion or 0) < QUICK_VERSION then
         _G.__VoidQuickVersion = QUICK_VERSION
         local Q = {}
@@ -98,12 +101,13 @@ do
         local GROUPS = { "Questing and travel", "Gear and gold", "Professions", "Combat", "PvP and groups", "Other" }
         local ADDONS = {
             { "VoidQuest", "Quests", 1 }, { "VoidGPS", "GPS", 1 }, { "VoidMap", "World map", 1 },
+            { "VoidDungeon", "Dungeons", 1 },
             { "VoidLayer", "Layers", 1 }, { "VoidSweep", "Map radar", 1 },
             { "VoidGear", "Gear", 2 }, { "VoidBags", "Bags", 2 }, { "VoidAH", "Auction House", 2 },
             { "VoidProf", "Professions", 3 }, { "VoidGather", "Gathering", 3 }, { "VoidFisher", "Fishing", 3 },
             { "VoidBars", "Action bars", 4 }, { "VoidTank", "Tank tools", 4 }, { "VoidAlert", "Alerts", 4 },
             { "VoidSequencer", "Sequencer", 4 }, { "VoidPlates", "Nameplates", 4 },
-            { "VoidFrames", "Party frames", 4 }, { "VoidCheatSheet", "Cheat sheets", 4 },
+            { "VoidFrames", "Party frames", 4 }, { "VoidCheatSheet", "Cheat sheets", 4, true },
             { "VoidRaidTools", "Raid tools", 4, true }, { "VoidRaidToolsReader", "VRT reader", 4, true },
             { "VoidDice", "Dice", 4 }, { "VoidComp", "Comp tool", 4 },
             { "VoidBounty", "Bounties", 5 }, { "VoidScout", "Scout", 5 }, { "VoidPug", "Pug tracker", 5 },
@@ -341,6 +345,8 @@ do
             box = CreateFrame("Frame", "VoidHubDrawer", UIParent, "BackdropTemplate")
             box:SetSize(240, 60)
             box:SetFrameStrata("HIGH")
+            box:SetToplevel(true)   -- opens / clicks in front of other Void windows (2026-11-16)
+            box:HookScript("OnShow", function(self) self:Raise() end)
             box:SetClampedToScreen(true)
             box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = VoidPX() })
             box:SetBackdropColor(0.05, 0.05, 0.07, 0.96)
@@ -520,6 +526,7 @@ local KNOWN_VOID_ADDONS = {
     { name = "VoidBounty",     label = "Bounties",          desc = "WoW Forever world PvP: enemy players nearby, the players who killed you, and writs paid in vendor goods." },
     { name = "VoidCalendar",   label = "Calendar",         public = true, desc = "A Void-themed calendar replacement that shows every event in your own time zone." },
     { name = "VoidCheatSheet", label = "Cheat Sheets",      public = true, desc = "In-game cheat sheets for every Midnight raid, the full Mythic+ pool, and delve bosses, auto-pops on pull." },
+    { name = "VoidDungeon",    label = "Dungeons",          public = true, desc = "WoW Forever dungeon guide inside VoidMap: maps, quests, boss loot, soft reserve, BoE handout and the marking board." },
     { name = "VoidComp",       label = "Comp Tool",         desc = "Group composition planning and balance helper." },
     { name = "VoidDice",       label = "Dice Roller",       desc = "Standardized loot-roll rolls for raids." },
     { name = "VoidFisher",     label = "Fishing",           desc = "Fishing tracker: catches, their value and the best spots." },
@@ -755,6 +762,8 @@ local function BuildInfoFrame()
     infoFrame:SetSize(440, 540)
     infoFrame:SetPoint("CENTER")
     infoFrame:SetFrameStrata("HIGH")
+    infoFrame:SetToplevel(true)
+    infoFrame:HookScript("OnShow", function(self) self:Raise() end)
     infoFrame:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",

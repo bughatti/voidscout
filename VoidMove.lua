@@ -156,11 +156,21 @@ function ns.Move(f, opts)
         handle:EnableMouse(true)
     end
     if handle then m.attach(handle) end
+    -- A box you grab is a window: it opens in front of the Void windows already open and a
+    -- click brings it forward (new ones opened BEHIND older ones on a fresh install, the
+    -- user's son's PC 2026-11-16). Click-through markers and holders keep their place.
+    local window = handle and not opts.clickThrough
+    if window and f.SetToplevel then f:SetToplevel(true) end
     -- Boxes made before the SavedVariables loaded, or that the addon places
     -- again each time they open: the saved spot wins whenever it shows.
     -- (the Show hook too: an addon setting its OnShow script after this would drop the script hook)
     local function onShow(g) if not m.moving and g:IsShown() then m.place(g) end end
-    f:HookScript("OnShow", onShow)
+    f:HookScript("OnShow", function(g)
+        onShow(g)
+        -- (only here, when it really opens: a HUD calling :Show() on every refresh mustn't
+        -- keep jumping over the window you're using)
+        if window and canTouch(g) then g:Raise() end
+    end)
     hooksecurefunc(f, "Show", onShow)
     hooksecurefunc(f, "SetShown", onShow)
     m.place(f)

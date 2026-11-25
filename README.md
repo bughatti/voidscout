@@ -42,6 +42,7 @@ Every player seen in logged content is graded on eight plain-English axes, which
 - **Applicant badges** — as a leader, every applicant gets a Probability badge so you can scan the whole queue at once
 - **Player tooltips** — achievement tier (CE/AOTC/KSM), gear, raid progress, M+ rating, top timed keys, Utility Score, and a Behavior line (interrupt percentile and kick count)
 - **Minimap button** — quick access; folds into the shared Void addon icon cluster
+- **WoW Forever: your score card** — left-click the minimap button: your VoidScout score from your own Forever boss fights, commitment, the axes, item level, average DPS, deaths, and the two things to work on. Drag it anywhere; it stays there
 
 ---
 

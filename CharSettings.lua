@@ -56,11 +56,25 @@ local function setPath(t, path, value)
     t[parts[#parts]] = value
 end
 
-local function me()
+-- spec (optional): with a blank realm name, look for this character's saved copy in that addon's data.
+local function me(spec)
     local name = UnitName("player")
     local realm = GetRealmName and GetRealmName()
-    if not (name and realm and realm ~= "") then return nil end
-    return name .. "-" .. realm:gsub("%s", "")
+    if issecretvalue and (issecretvalue(name) or issecretvalue(realm)) then return nil end
+    if type(name) ~= "string" or name == "" then return nil end
+    if type(realm) == "string" and realm ~= "" then return name .. "-" .. realm:gsub("%s", "") end
+    -- WoW Forever, 2026-11-21: GetRealmName() turned blank on the PC client overnight. The copy saved under
+    -- the name the game gave before is still this character's: used when it's the only one by this name.
+    local db = spec and _G[spec.db]
+    if type(db) ~= "table" or type(db.chars) ~= "table" then return nil end
+    local prefix, found = name .. "-", nil
+    for k in pairs(db.chars) do
+        if type(k) == "string" and #k > #prefix and k:sub(1, #prefix) == prefix then
+            if found then return nil end   -- the same name on two realms: can't tell
+            found = k
+        end
+    end
+    return found
 end
 CS.Me = me
 
@@ -75,7 +89,7 @@ end
 
 -- Put this character's settings in place (keeping the shared paths).
 local function load(spec)
-    local key = me()
+    local key = me(spec)
     if not key then return false end
     spec.loaded = key
     local db = dbOf(spec)

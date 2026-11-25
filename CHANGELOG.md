@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.37.27] — 2026-11-25
+
+- **WoW Forever: your score card.** Left-click the VoidScout button by the minimap: your VoidScout score from your own boss fights, commitment, damage / avoidance / activity / survival / teamwork, item level, average DPS, deaths, and the two things to work on. Drag it anywhere; it stays there.
+- **Item levels on WoW Forever** are measured from what players wear (inspected or seen in a fight), since retail's item level doesn't exist there.
+
 ## [0.37.26] — 2026-11-12
 
 - **Fixed: a side of a box could be missing**, e.g. the right line of the recipes box and its buttons when the game window is an odd number of pixels wide. Every Void box now always shows all four border lines.
