@@ -1,0 +1,17 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <!-- The VoidHub window, shared by every Void addon (Libs\VoidHub, kept identical by tools/cmd/sync-libs).
+         One TOC line per addon: Libs\VoidHub\VoidHub.xml. Kit.lua first: it decides which copy runs. -->
+    <Script file="Kit.lua"/>
+    <Script file="Window.lua"/>
+    <Script file="Pages\Quests.lua"/>
+    <Script file="Pages\Layers.lua"/>
+    <Script file="Pages\Travel.lua"/>
+    <Script file="Pages\Gold.lua"/>
+    <Script file="Pages\Prof.lua"/>
+    <Script file="Pages\Combat.lua"/>
+    <Script file="Pages\Dungeons.lua"/>
+    <Script file="Pages\PvP.lua"/>
+    <Script file="Pages\Other.lua"/>
+    <Script file="Pages\Seq.lua"/>
+    <Script file="Pages\Start.lua"/>
+</Ui>

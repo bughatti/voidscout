@@ -88,7 +88,8 @@ do
     -- 4: VoidDungeon listed (dungeon guide + marking board; it had no hub entry, the user 2026-11-14)
     -- 5: VoidCheatSheet is retail only (its WoW Forever sheets are in VoidDungeon, 2026-11-15): left
     --    out on WoW Forever again
-    local QUICK_VERSION = 6
+    -- 7: right-click on the hub button opens the VoidHub window (Libs\VoidHub), Shift+right-click the older panel
+    local QUICK_VERSION = 7
     if (_G.__VoidQuickVersion or 0) < QUICK_VERSION then
         _G.__VoidQuickVersion = QUICK_VERSION
         local Q = {}
@@ -465,6 +466,9 @@ do
                 if button == "LeftButton" then
                     if _G.VoidHubPopup then _G.VoidHubPopup:Hide() end   -- the old icon ring, never again
                     Q.Toggle()
+                elseif button == "RightButton" and _G.VoidHub_Toggle and not IsShiftKeyDown() then
+                    -- the VoidHub window (7), even when an older copy made the button
+                    _G.VoidHub_Toggle()
                 elseif orig then
                     orig(self, button)
                 end
@@ -945,14 +949,25 @@ local function CreateHubButton()
     border:SetTexture(BORDER_TEX)
 
     hubBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    -- Right-click = the VoidHub window (Libs\VoidHub, in every Void addon since 2026-11-25); Shift+right-click = the
+    -- older panel (all Void addons + copy settings from another character). A copy without the window: the panel.
     hubBtn:SetScript("OnClick", function(_, button)
-        if button == "RightButton" then ToggleInfo() else TogglePopup() end
+        if button == "RightButton" then
+            if _G.VoidHub_Toggle and not IsShiftKeyDown() then _G.VoidHub_Toggle() else ToggleInfo() end
+        else
+            TogglePopup()
+        end
     end)
     hubBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("|cff00c7ffVoidHub|r")
         GameTooltip:AddLine("Left-click: open Void addons", 1, 1, 1)
-        GameTooltip:AddLine("Right-click: all Void addons, copy settings from another character", 1, 1, 1)
+        if _G.VoidHub_Toggle then
+            GameTooltip:AddLine("Right-click: the VoidHub window (every Void addon in one place)", 1, 1, 1)
+            GameTooltip:AddLine("Shift + right-click: copy settings from another character", 1, 1, 1)
+        else
+            GameTooltip:AddLine("Right-click: all Void addons, copy settings from another character", 1, 1, 1)
+        end
         GameTooltip:AddLine("Drag: reposition", 0.7, 0.7, 0.7)
         local buttons = DiscoverVoidButtons()
         if #buttons > 0 then
@@ -1038,9 +1053,12 @@ SlashCmdList["VOIDHUB"] = function(msg)
         end
     elseif msg == "info" or msg == "i" then
         ToggleInfo()
+    elseif msg == "" and _G.VoidHub_Toggle then
+        _G.VoidHub_Toggle()   -- the VoidHub window
     elseif msg == "" or msg == "help" then
         print("|cff00c7ff[VoidHub]|r Commands:")
-        print("  |cff00c7ff/vhub|r — show this help")
+        print("  |cff00c7ff/vhub|r — open the VoidHub window (every Void addon in one place)")
+        print("  |cff00c7ff/vhub help|r — show this help")
         print("  |cff00c7ff/vhub satellites|r — toggle individual minimap icons")
         print("  |cff00c7ff/vhub info|r — open the Void Addons info panel")
     end
